@@ -9,6 +9,12 @@ async def main():
     screen = pygame.display.set_mode([SCREEN_WIDTH, SCREEN_HEIGHT])
     pygame.display.set_caption("Boba Comeback")
     clock = pygame.time.Clock()
+    CUSTOMERS = {
+        "hamster":{"default":pygame.image.load("assets/characters/hamster_default.png"), "sad":pygame.image.load("assets/character/hamster_disgusted.png"), "happy":pygame.image.load("assets/hamster_happy.png")},
+    }
+
+    class Customer:
+        pass
 
     class Topping:
         def __init__(self, image, center_pos, size=120):
