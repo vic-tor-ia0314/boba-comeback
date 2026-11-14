@@ -21,9 +21,9 @@ async def main():
     CUSTOMERS = {
         "hamster":{"default":pygame.image.load("assets/characters/hamster_default.jpg"), "sad":pygame.image.load("assets/characters/hamster_disgusted.jpg"), "happy":pygame.image.load("assets/characters/hamster_happy.jpg")},
     }
-
-    class Customer:
-        pass
+    TOPPINGS = {
+        #"pearls": {"image": pygame.image.load("assets/toppings/pearls.png"), "value": 10},
+    }
 
     print("CV_ON:", CV_ON)
 
@@ -47,12 +47,61 @@ async def main():
         else:
             mode_message = "Couldn't open webcam. Using clicking mode."
 
+    def generate_order():
+        number = random.randint(1, len(available_toppings))
+        return random.sample(available_toppings, number)
+
+    def new_customer():
+        nonlocal customer, current_order
+
+        name = random.choice(list(CUSTOMERS.keys()))
+        current_order = generate_order()
+        customer = Customer(name, current_order)
+
+        selected_toppings.clear()
+        toppings.empty()
+
+        positions = [
+            (300, 450),
+            (500, 450),
+            (700, 450)
+        ]
+
+        for index, topping_name in enumerate(available_toppings):
+            x, y = positions[index]
+            toppings.add(Topping(
+                TOPPINGS[topping_name]["image"],
+                x,
+                y,
+                topping_name,
+                TOPPINGS[topping_name]["value"]
+            ))
+
+    class Customer:
+            def __init__(self, name, order):
+                self.name = name
+                self.order = order
+                self.image = CUSTOMERS[name]["default"]
+                self.rect = self.image.get_rect(center=(640, 200))
+    
+            def check_order(self, selected_toppings):
+                if set(selected_toppings) == set(self.order):
+                    self.image = CUSTOMERS[self.name]["happy"]
+                    return True
+                else:
+                    self.image = CUSTOMERS[self.name]["sad"]
+                    return False
+    
+            def draw(self, screen):
+                screen.blit(self.image, self.rect)
+
     class Topping(pygame.sprite.Sprite):
-        def __init__(self, image_path, x, y, value):
+        def __init__(self, image_path, x, y, name, value):
             super().__init__()
             self.image = pygame.image.load(image_path).convert_alpha()
             self.rect = self.image.get_rect(topleft=(x, y))
             self.value = value
+            self.name = name
 
             def update(self):
                 pass
@@ -63,20 +112,30 @@ async def main():
 
     #MAIN#
     money = 0
-
     status = "mode_select"
 
     toppings = pygame.sprite.Group()
-    #toppings.add(Topping("assets/toppings/strawberry.png", 100, 200, 5))
-    #toppings.add(Topping("assets/toppings/pearls.png", 300, 200, 10))
-    #toppings.add(Topping("assets/toppings/matcha.png", 500, 200, 15))
 
-    tutorial_text = [
-    ]
+    available_toppings = ['''add stuff here''']
+    selected_toppings = []
+    current_order = []
+    customer = None
+
+    customer_timer = 0
+    next_customer_time = random.randint(3000, 7000)
+
+    customer_reacting = False
+    reaction_timer = 0
+
+    tutorial_text = []
+
+    serve_button = pygame.Rect(1000, 600, 200, 70)
 
     running = True
 
     while running:
+        dt = clock.get_time()
+
         for event in pygame.event.get():
             if event.type == QUIT:
                 running = False
@@ -95,12 +154,28 @@ async def main():
                         start_camera()
                         status = "title"
                 elif status == "game":
-                    if not use_camera:
-                        clicked = False
-                        for topping in reversed(toppings.sprites()):
-                            if topping.rect.collidepoint(event.pos) and not clicked:
-                                topping.handle_click()
-                                clicked = True
+                    if not use_camera and customer is not None and not customer_reacting:
+                            clicked = False
+
+                            for topping in reversed(toppings.sprites()):
+                                if topping.rect.collidepoint(event.pos) and not clicked:
+                                    topping.handle_click()
+                                    clicked = True
+
+                            if serve_button.collidepoint(event.pos):
+                                accepted = customer.check_order(selected_toppings)
+
+                                customer_reacting = True
+                                reaction_timer = 0
+
+                                if accepted:
+                                    money += sum(
+                                        TOPPINGS[name]["value"]
+                                        for name in current_order
+                                    )
+
+        screen.fill((0, 0, 0))
+
 
         screen.fill((0, 0, 0))
 
@@ -132,14 +207,58 @@ async def main():
                 # OPENCV MODE (Sophia): webcam controls for toppings here
                 pass
             else:
+                if customer is None and not customer_reacting:
+                    customer_timer += dt
+
+                    if customer_timer >= next_customer_time:
+                        new_customer()
+                        customer_timer = 0
+
+                # CUSTOMER REACTION
+                if customer_reacting:
+                    reaction_timer += dt
+
+                    if reaction_timer >= 2000:
+                        customer = None
+                        customer_reacting = False
+                        customer_timer = 0
+                        next_customer_time = random.randint(3000, 7000)
+
+                # DRAW CUSTOMER
+                if customer is not None:
+                    customer.draw(screen)
+
+                # DRAW TOPPINGS
                 toppings.update()
                 toppings.draw(screen)
+
+                # SERVE BUTTON
+                pygame.draw.rect(screen, (255, 255, 255), serve_button, 3)
+                serve_text = font.render("SERVE", True, (255, 255, 255))
+                screen.blit(serve_text, serve_text.get_rect(center=serve_button.center))
+
+                # DISPLAY SELECTED TOPPINGS
+                selected_text = font.render(
+                    "Selected: " + ", ".join(selected_toppings),
+                    True,
+                    (255, 255, 255)
+                )
+                screen.blit(selected_text, (20, 70))
+
+                # DISPLAY ORDER (TEMPORARY FOR TESTING)
+                if customer is not None:
+                    order_text = font.render(
+                        "Order: " + ", ".join(current_order),
+                        True,
+                        (255, 255, 255)
+                    )
+                    screen.blit(order_text, (20, 120))
 
             money_text = font.render(f"Money: ${money}", True, (255, 255, 255))
             screen.blit(money_text, (20, 20))
 
-            #WHEN ADDING MORE TOPPINGS:
-            #toppings.add(Topping("assets/toppings/example.png", 700, 300, 20))
+            # WHEN ADDING MORE TOPPINGS:
+            # toppings.add(Topping("assets/toppings/example.png", 700, 300, "example", 20))
 
         pygame.display.flip()
         clock.tick(60)
