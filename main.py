@@ -3,6 +3,13 @@ from pygame import *
 import asyncio
 import random
 
+try:
+    import cv2
+    CV_ON = True
+except ImportError as error:
+    print("OpenCV error:", error)
+    CV_ON = False
+
 async def main():
     SCREEN_WIDTH = 1280
     SCREEN_HEIGHT = 720
@@ -15,6 +22,13 @@ async def main():
 
     class Customer:
         pass
+
+    print("CV_ON:", CV_ON)
+
+    camera = None
+    if CV_ON:
+        camera = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+        print("camera opened:", camera.isOpened())
 
     class Topping:
         def __init__(self, image, center_pos, size=120):
@@ -59,6 +73,13 @@ async def main():
 
         screen.fill((0, 0, 0))
 
+        if camera is not None:
+            ok, frame = camera.read()
+            if ok:
+                frame = cv2.flip(frame, 1)
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                camera_image = pygame.image.frombuffer(frame.tobytes(), (frame.shape[1], frame.shape[0]), "RGB")
+                screen.blit(camera_image, (0, 0))
         if status == "title":
             #screen.blit(title_image,(0,0))
             pass
@@ -74,6 +95,8 @@ async def main():
         clock.tick(60)
         await asyncio.sleep(0)
 
+    if camera is not None:
+        camera.release()
     pygame.quit()
 
 if __name__ == "__main__":
