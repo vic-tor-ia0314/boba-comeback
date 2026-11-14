@@ -19,7 +19,7 @@ async def main():
     pygame.display.set_caption("Boba Comeback")
     clock = pygame.time.Clock()
     CUSTOMERS = {
-        "hamster":{"default":pygame.image.load("assets/characters/hamster_default.png"), "sad":pygame.image.load("assets/character/hamster_disgusted.png"), "happy":pygame.image.load("assets/hamster_happy.png")},
+        "hamster":{"default":pygame.image.load("assets/characters/hamster_default.jpg"), "sad":pygame.image.load("assets/characters/hamster_disgusted.jpg"), "happy":pygame.image.load("assets/characters/hamster_happy.jpg")},
     }
 
     class Customer:
@@ -31,7 +31,7 @@ async def main():
     use_camera = False      # True = OpenCV mode, False = clicking mode
 
     font = pygame.font.Font(None, 40)
-    browser_button = pygame.Rect(240, 300, 360, 120)
+    browser_button = pygame.Rect(240, 300, 360, 120) # kinda chopped rn so we can make it look better when we have artists UI done/titlepage
     download_button = pygame.Rect(680, 300, 360, 120)
     mode_message = ""
 
@@ -60,8 +60,6 @@ async def main():
 
         def clicked(self, pos):
             return self.rect.collidepoint(pos)
-
-
     
     #MAIN#
     money = 0
@@ -129,7 +127,7 @@ async def main():
                 # OPENCV MODE (Sophia): webcam controls for toppings here
                 pass
             else:
-                # CLICKING MODE (Victoria): anything clicking needs every frame here
+                # CLICKING MODE (Victoria): normal controls for toppings/making drink
                 pass
 
             for topping in toppings:
