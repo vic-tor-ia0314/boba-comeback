@@ -488,14 +488,23 @@ async def main():
         label.set_alpha(alpha)
         screen.blit(label, label.get_rect(center=(rect.centerx - 4, rect.centery - 4)))
 
-    # STORY FLOW (Sophia): cutscene frames -> tutorial (placeholder) -> game
+    # STORY FLOW: cutscene frames -> tutorial (placeholder) -> game
     def next_story_screen():
-        nonlocal status, cutscene_index
+        nonlocal status, cutscene_index, tutorial_text_index
         if status == "tutorial":
-            if cutscene_index < len(cutscene) - 1:
-                cutscene_index += 1
+            if cutscene_index in TUTORIAL_INSTRUCTIONS:
+                if tutorial_text_index < len(TUTORIAL_INSTRUCTIONS[cutscene_index]) - 1:
+                    tutorial_text_index += 1
+                else:
+                    tutorial_text_index = 0
+                    cutscene_index += 1
+                    if cutscene_index >= len(cutscene):
+                        status = "how_to_play"
             else:
-                status = "how_to_play"
+                cutscene_index += 1
+                tutorial_text_index = 0
+                if cutscene_index >= len(cutscene):
+                    status = "how_to_play"
         elif status == "how_to_play":
             status = "game"
 
@@ -549,6 +558,19 @@ async def main():
                 topping_name,
                 TOPPINGS[topping_name]["value"]
             ))
+
+    def draw_tutorial_text():
+        instruction = TUTORIAL_INSTRUCTIONS[cutscene_index][tutorial_text_index]
+        pygame.draw.rect(screen, (255, 248, 235), tutorial_box, border_radius=12)
+        pygame.draw.rect(screen, (148, 90, 45), tutorial_box, 3, border_radius=12)
+        lines = wrap_text(instruction, tutorial_font, tutorial_box.width - 30)
+        y = tutorial_box.top + 20
+        for line in lines:
+            text_surface = tutorial_font.render(line, True, (75, 50, 35))
+            screen.blit(text_surface, (tutorial_box.left + 15, y))
+            y += tutorial_font.get_linesize()
+            hint = tutorial_hint_font.render("SPACE to continue", True, (148, 90, 45))
+            screen.blit(hint, hint.get_rect(bottomright=(tutorial_box.right - 12, tutorial_box.bottom - 10)))
 
     def unlock_next_topping():
         nonlocal unlocked_toppings
@@ -631,8 +653,26 @@ async def main():
     customer_reacting = False
     reaction_timer = 0
 
-    cutscene = [pygame.image.load("assets/ui/cutscene_frame1.png"), pygame.image.load("assets/ui/cutscene_frame2.png")]
+    cutscene = [pygame.image.load("assets/ui/cutscene_frame1.png"), pygame.image.load("assets/ui/cutscene_frame2.png"), pygame.image.load("assets/ui/cutscene_frame3.png"), pygame.image.load("assets/ui/tutorial1.png"), pygame.image.load("assets/ui/tutorial2.png")]
     cutscene_index = 0
+    tutorial_text_index = 0
+
+    TUTORIAL_INSTRUCTIONS = {
+        4: [
+            "Welcome to Boba Comeback, where you attempt to bounce back financially after going horribly bankrupt!",
+            "Customers, like Peppa Pig over here, will come in and order drinks from you."
+            "It is your job to correctly make them. The order matters!"
+        ],
+        5: [
+            "Click C to place a cup on the center board.",
+            "Then, click any of the three jars on the right to choose your base.",
+            "Click the right topping boxes to add toppings into the cup.",
+            "You'll notice that you only have three toppings unlocked at the beginning.",
+            "As you make more drinks, you'll unlock more toppings.",
+            "Press the CLEAR button to reset your cup, and press the SERVE button to give the customer the drink.",
+            "Make 100$ to fully bounce back from being so incredibly broke!"
+        ]
+    }
 
     # MAIN SCREEN BACKGROUND (Sophia)
     main_screen = pygame.transform.scale(pygame.image.load("assets/ui/background.png").convert(), (SCREEN_WIDTH, SCREEN_HEIGHT))
@@ -694,6 +734,10 @@ async def main():
     money_font = pygame.font.Font(FONT_PATH, 56)
     money_popup_text = ""
     displayed_money = 0      # the number on screen, slides toward money
+    # TUTORIAL TEXT BOX
+    tutorial_box = pygame.Rect(20, 110, 350, 250)
+    tutorial_font = pygame.font.Font(FONT_PATH, 30)
+    tutorial_hint_font = pygame.font.Font(FONT_PATH, 24)
     button_hover = {}        # hover animation for the custom buttons
     key_font = pygame.font.Font(FONT_PATH, 26)
     topping_drop_start = {}  # topping name -> time it was dropped in (for the bounce)
@@ -712,8 +756,6 @@ async def main():
         "C": (1000, 315),    # cup stacks
         "I": (801, 382),     # ice bucket
     }
-    
-    tutorial_text = []
 
     # CUSTOMER DIALOGUE (Sophia)
     # names must match the keys in CUSTOMERS
@@ -903,6 +945,8 @@ async def main():
             pass
         elif status == "tutorial":
             screen.blit(cutscene[cutscene_index], (0, 0))
+            if cutscene_index in TUTORIAL_INSTRUCTIONS:
+                draw_tutorial_text()
         elif status == "how_to_play":
             # TUTORIAL SPOT (Sophia): black screen for now, put the tutorial here later
             hint_text = font.render("click to start", True, (90, 90, 90))
