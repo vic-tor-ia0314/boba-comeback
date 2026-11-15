@@ -21,7 +21,10 @@ async def main():
     pygame.display.set_caption("Boba Comeback")
     clock = pygame.time.Clock()
     CUSTOMERS = {
-        "hamster":{"default":pygame.image.load("assets/characters/hamster_default.jpg"), "sad":pygame.image.load("assets/characters/hamster_disgusted.jpg"), "happy":pygame.image.load("assets/characters/hamster_happy.jpg")},
+        "hamster":{"default":pygame.image.load("assets/characters/hamster_default.jpg"), "angry":pygame.image.load("assets/characters/hamster_disgusted.jpg"), "happy":pygame.image.load("assets/characters/hamster_happy.jpg")},
+        "chiikawa":{"default":pygame.image.load("assets/characters/chiikawa_default.png"), "angry":pygame.image.load("assets/characters/chiikawa_angry.png"), "happy":pygame.image.load("assets/characters/chiikawa_happy.png")},
+        "peppapig":{"default":pygame.image.load("assets/characters/peppapig_default.png"), "angry":pygame.image.load("assets/characters/peppapig_angry.png"), "happy":pygame.image.load("assets/characters/peppapig_happy.png")},
+        "redpanda":{"default":pygame.image.load("assets/characters/redpanda_default.png"), "angry":pygame.image.load("assets/characters/redpanda_angry.png"), "happy":pygame.image.load("assets/characters/redpanda_happy.png")},
     }
     TOPPINGS = {
         #"pearls": {"image": pygame.image.load("assets/toppings/pearls.png"), "value": 10},
@@ -174,7 +177,7 @@ async def main():
                     self.image = CUSTOMERS[self.name]["happy"]
                     return True
                 else:
-                    self.image = CUSTOMERS[self.name]["sad"]
+                    self.image = CUSTOMERS[self.name]["angry"]
                     return False
     
             def draw(self, screen):
