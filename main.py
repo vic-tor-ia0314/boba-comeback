@@ -666,7 +666,7 @@ async def main():
         4: [
             "Click C to place a cup on the center board.",
             "Then, click any of the three jars on the right to choose your base.",
-            "Click the right topping boxes to add toppings into the cup.",
+            "Click the left topping boxes to add the specified toppings into the cup.",
             "You'll notice that you only have three toppings unlocked at the beginning.",
             "As you make more drinks, you'll unlock more toppings.",
             "Press the CLEAR button to reset your cup, and press the SERVE button to give the customer the drink.",
@@ -676,6 +676,7 @@ async def main():
 
     # MAIN SCREEN BACKGROUND (Sophia)
     main_screen = pygame.transform.scale(pygame.image.load("assets/ui/background.png").convert(), (SCREEN_WIDTH, SCREEN_HEIGHT))
+    end_screen = pygame.transform.scale(pygame.image.load("assets/ui/theend.png").convert(), (SCREEN_WIDTH, SCREEN_HEIGHT))
     camera_image = None
 
     # TITLE SCREEN (Sophia)
@@ -941,7 +942,6 @@ async def main():
             if mode_message != "":
                 message_text = font.render(mode_message, True, (255, 255, 255))
                 screen.blit(message_text, message_text.get_rect(center=(640, 650)))
-            #screen.blit(title_image,(0,0))
             pass
         elif status == "tutorial":
             screen.blit(cutscene[cutscene_index], (0, 0))
@@ -1102,23 +1102,7 @@ async def main():
         
         elif status == "end":
             # END SCREEN
-            screen.blit(main_screen, (0, 0))
-
-            # Dark overlay
-            overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-            overlay.fill((30, 25, 20, 180))
-            screen.blit(overlay, (0, 0))
-
-            # Victory message
-            win_title = button_font.render("YOU DID IT!", True, (255, 240, 190))
-            win_text = font.render("You earned $100!", True, (255, 255, 255))
-            money_text = button_font.render("$" + str(money), True, (180, 220, 150))
-            exit_text = font.render("Press ESC to quit", True, (255, 255, 255))
-
-            screen.blit(win_title, win_title.get_rect(center=(640, 230)))
-            screen.blit(win_text, win_text.get_rect(center=(640, 330)))
-            screen.blit(money_text, money_text.get_rect(center=(640, 420)))
-            screen.blit(exit_text, exit_text.get_rect(center=(640, 550)))
+            screen.blit(end_screen, (0, 0))
 
         # SCREEN TRANSITIONS: old screen fades out over the new one
         if transition_snapshot is not None:
