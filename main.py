@@ -38,14 +38,14 @@ async def main():
     }
 
     TOPPINGS = {
-        #"pearls": {"image": pygame.image.load("assets/toppings/pearls.png"), "value": 10},
-        #"grassjelly": {"image": pygame.image.load("assets/toppings/grass_jelly.png"), "value": 15},
-        #"coconut":{"image": pygame.image.load("assets/toppings/coconut.png"), "value": 10},
-        #"strawberryboba":{"image": pygame.image.load("assets/toppings/strawberryboba.png"), "value": 10},
-        #"mangoboba":{"image": pygame.image.load("assets/toppings/mangoboba.png"), "value": 10},
-        #"strawberrychunk":{"image": pygame.image.load("assets/toppings/strawberry.png"), "value": 20},
-        #"mangochunk":{"image": pygame.image.load("assets/toppings/mango.png"), "value": 20},
-        #"redbean":{"image": pygame.image.load("assets/toppings/redbean.png"), "value": 20}
+        "pearls": {"image": pygame.image.load("assets/toppings/pearls.png"), "value": 10},
+        "grassjelly": {"image": pygame.image.load("assets/toppings/grassjelly.png"), "value": 15},
+        "coconutjelly":{"image": pygame.image.load("assets/toppings/coconutjelly.png"), "value": 10},
+        "strawberrypearls":{"image": pygame.image.load("assets/toppings/strawberrypearls.png"), "value": 10},
+        "mangopearls":{"image": pygame.image.load("assets/toppings/mangopearls.png"), "value": 10},
+        "strawberrychunks":{"image": pygame.image.load("assets/toppings/strawberrychunks.png"), "value": 20},
+        "mangochunks":{"image": pygame.image.load("assets/toppings/mangochunks.png"), "value": 20},
+        "redbean":{"image": pygame.image.load("assets/toppings/redbean.png"), "value": 20}
     }
 
     print("CV_ON:", CV_ON)
@@ -63,8 +63,8 @@ async def main():
     waiting_for_reset = False
 
     # finger number -> topping. Names must match the keys in TOPPINGS
-    HAND_TOPPINGS = ["pearls", "grassjelly", "coconut", "strawberryboba",
-                     "mangoboba", "mangochunk", "strawberrychunk", "redbean"]
+    HAND_TOPPINGS = ["pearls", "grassjelly", "coconutjelly", "strawberrypearls",
+                     "mangopearls", "mangochunks", "strawberrychunks", "redbean"]
 
     # DEFAULT FONT (Sophia): falls back to pygame's font if the file is missing
     FONT_PATH = "assets/VT323-Regular.ttf"
