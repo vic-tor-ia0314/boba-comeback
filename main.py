@@ -47,12 +47,19 @@ async def main():
         else:
             mode_message = "Couldn't open webcam. Using clicking mode."
 
-    class Topping:
-        def __init__(self, image, center_pos, size=120):
-            self.image = pygame.image.load(image)
-            self.size = size
+    class Topping(pygame.sprite.Sprite):
+        def __init__(self, image_path, x, y, value):
+            super().__init__()
+            self.image = pygame.image.load(image_path).convert_alpha()
+            self.rect = self.image.get_rect(topleft=(x, y))
+            self.value = value
 
-            self.rect = self.image.get_rect(center=center_pos)
+            def update(self):
+                pass
+            def handle_click(self):
+                nonlocal money
+                money += self.value
+                self.kill()
 
         def draw(self, screen):
             screen.blit(self.image, self.rect)
@@ -65,11 +72,13 @@ async def main():
     money = 0
 
     status = "mode_select"
-    toppings = [
-        #add Topping() here
-    ]
-    tutorial_text = [
 
+    toppings = pygame.sprite.Group()
+    #toppings.add(Topping("assets/toppings/strawberry.png", 100, 200, 5))
+    #toppings.add(Topping("assets/toppings/pearls.png", 300, 200, 10))
+    #toppings.add(Topping("assets/toppings/matcha.png", 500, 200, 15))
+
+    tutorial_text = [
     ]
 
     running = True
@@ -94,8 +103,11 @@ async def main():
                         status = "title"
                 elif status == "game":
                     if not use_camera:
-                        # CLICKING MODE (Victoria): click on toppings here
-                        pass
+                        clicked = False
+                        for topping in reversed(toppings.sprites()):
+                            if topping.rect.collidepoint(event.pos) and not clicked:
+                                topping.handle_click()
+                                clicked = True
 
         screen.fill((0, 0, 0))
 
@@ -129,11 +141,14 @@ async def main():
             else:
                 # CLICKING MODE (Victoria): normal controls for toppings/making drink
                 pass
+                toppings.update()
+                toppings.draw(screen)
 
-            for topping in toppings:
-                topping.update()
-                topping.draw(screen)
-            pass
+            money_text = font.render(f"Money: ${money}", True, (255, 255, 255))
+            screen.blit(money_text, (20, 20))
+
+            #WHEN ADDING MORE TOPPINGS:
+            #toppings.add(Topping("assets/toppings/example.png", 700, 300, 20))
 
         pygame.display.flip()
         clock.tick(60)
