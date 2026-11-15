@@ -228,7 +228,7 @@ async def main():
     ending_pending = False
 
     # MAIN SCREEN BACKGROUND (Sophia)
-    main_screen = pygame.transform.scale(pygame.image.load("assets/ui/main_screen.jpg").convert(), (SCREEN_WIDTH, SCREEN_HEIGHT))
+    main_screen = pygame.transform.scale(pygame.image.load("assets/ui/background.png").convert(), (SCREEN_WIDTH, SCREEN_HEIGHT))
     camera_image = None
 
 
