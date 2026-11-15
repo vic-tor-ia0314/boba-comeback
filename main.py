@@ -123,9 +123,10 @@ async def main():
         # happy = right order, meh = some toppings right, angry = none right
         if set(selected_toppings) == set(current_order):
             return "happy"
-        for name in selected_toppings:
-            if name in current_order:
-                return "meh"
+        else:
+            for name in selected_toppings:
+                if name in current_order:
+                    return "meh"
         return "angry"
 
     def wrap_text(text, font, max_width):
@@ -288,13 +289,13 @@ async def main():
             "angry": ["*flops over* ...ok."],
         },
         "hamster": {
-            "order": ["HI CHAT CAN I GET A {base} WITH SOME {topping} PLSPSLPSSPLS!!!!"],
+            "order": ["HI CHAT CAN I GET A {base} WITH SOME {toppings} PLSPSLPSSPLS!!!!"],
             "happy": ["I LOVE THIS DRINK AND I LOVE YOUUUUUUU BYEEE"],
             "meh": ["Hmm, I think you made it wrong... that's okay ig."],
             "angry": ["Bro. Are u fr. I'm allergic to {base}"],
         },
         "redpanda": {
-            "order": ["I'm hungry. Can I have a 67 ({base}) with some skibidi rizz ({topping})"],
+            "order": ["I'm hungry. Can I have a 67 ({base}) with some skibidi rizz ({toppings})"],
             "happy": ["Waiitttt imma touch u! It's perfect, thank youuu!"],
             "meh": ["Grr... it's okay I guess..."],
             "angry": ["GRRRRR this isnt what i asked for bro >:("],
@@ -306,7 +307,7 @@ async def main():
             "angry": ["b-baka! What the hell's wrong with you! Can't even make a simple drink..!"],
         },
         "peppapig": {
-            "order": ["Two Two's my Poo Poo's, I finna take a {base} w some {topping}, don't be a Gerbert fam."],
+            "order": ["Two Two's my Poo Poo's, I finna take a {base} w some {toppings}, don't be a Gerbert fam."],
             "happy": ["Yooo this is fire! Bless up bossman!"],
             "meh": ["Nah who made this. I'm sooper cheesed fam."],
             "angry": ["cro... wrong order fam."],
