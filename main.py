@@ -234,8 +234,9 @@ async def main():
 
     def serve_drink():
         # MONEY ONLY CHANGES HERE: happy = full price, meh = half, angry = you lose half (wasted ingredients)
-        nonlocal money, customer_reacting, reaction_timer, last_mood, money_popup_text, money_popup_timer
+        nonlocal money, customer_reacting, reaction_timer, last_mood, money_popup_text, money_popup_timer, status
         nonlocal cup_shown, selected_base, served_base, served_toppings, served_timer
+        nonlocal won
         last_mood = get_mood()
         total = order_total()
         if last_mood == "happy":
@@ -246,6 +247,8 @@ async def main():
         else:
             change = -(total // 2)
         money += change
+        if money >= 100:
+            won = True
         money_popup_text = ("+$" if change >= 0 else "-$") + str(abs(change))
         money_popup_timer = 0
         customer.image = CUSTOMERS[customer.name].get(last_mood, CUSTOMERS[customer.name]["default"])
@@ -765,6 +768,8 @@ async def main():
     serve_button = pygame.Rect(980, 600, 200, 70)
     clear_button = pygame.Rect(760, 600, 200, 70)
 
+    won = False
+
     running = True
 
     while running:
@@ -937,8 +942,12 @@ async def main():
                     customer = None
                     customer_reacting = False
                     reaction_timer = 0
-                    customer_timer = 0
-                    next_customer_time = random.randint(3000, 7000)
+
+                    if won:
+                        status = "end"
+                    else:
+                        customer_timer = 0
+                        next_customer_time = random.randint(3000, 7000)
 
             # DRAW CUSTOMER
             if customer is not None:
@@ -1046,6 +1055,26 @@ async def main():
             if abs(money - displayed_money) < 0.5:
                 displayed_money = money
             draw_money()
+        
+        elif status == "end":
+            # END SCREEN
+            screen.blit(main_screen, (0, 0))
+
+            # Dark overlay
+            overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            overlay.fill((30, 25, 20, 180))
+            screen.blit(overlay, (0, 0))
+
+            # Victory message
+            win_title = button_font.render("YOU DID IT!", True, (255, 240, 190))
+            win_text = font.render("You earned $100!", True, (255, 255, 255))
+            money_text = button_font.render("$" + str(money), True, (180, 220, 150))
+            exit_text = font.render("Press ESC to quit", True, (255, 255, 255))
+
+            screen.blit(win_title, win_title.get_rect(center=(640, 230)))
+            screen.blit(win_text, win_text.get_rect(center=(640, 330)))
+            screen.blit(money_text, money_text.get_rect(center=(640, 420)))
+            screen.blit(exit_text, exit_text.get_rect(center=(640, 550)))
 
         # SCREEN TRANSITIONS: old screen fades out over the new one
         if transition_snapshot is not None:
