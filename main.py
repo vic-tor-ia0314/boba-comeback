@@ -456,6 +456,50 @@ async def main():
         layer.set_alpha(int(255 * alpha))
         screen.blit(layer, (dialogue_box.left, dialogue_box.top - 44 + int((1 - appear) * 50)))
 
+    def draw_story_box(text, shake):
+        # same look as the customer dialogue: full-width box, name tab, typewriter text, bobbing arrow
+        layer = pygame.Surface((dialogue_box.width, dialogue_box.height + 44), pygame.SRCALPHA)
+        box = pygame.Rect(0, 44, dialogue_box.width, dialogue_box.height)
+        layer.blit(pygame.transform.smoothscale(dialogue_image, box.size), box)
+
+        name_surface = name_font.render(STORY_NAME, True, (255, 244, 220))
+        tab = pygame.Rect(28, 4, name_surface.get_width() + 44, 48)
+        pygame.draw.rect(layer, (148, 90, 45), tab, border_radius=12)
+        pygame.draw.rect(layer, (110, 62, 30), tab, 3, border_radius=12)
+        layer.blit(name_surface, name_surface.get_rect(center=tab.center))
+
+        letters_shown = int(max(0, story_timer) * TYPE_SPEED)
+        y = box.top + 30
+        for line in wrap_text(text, dialogue_font, box.width - 140):
+            if letters_shown <= 0:
+                break
+            part = line[:letters_shown]
+            letters_shown -= len(line) + 1
+            # shaky lines: every letter jitters a little
+            if shake:
+                x = box.left + 44
+                for letter in part:
+                    letter_surface = dialogue_font.render(letter, True, (45, 30, 20))
+                    layer.blit(letter_surface, (x + random.randint(-2, 2), y + random.randint(-2, 2)))
+                    x += dialogue_font.size(letter)[0]
+            else:
+                layer.blit(dialogue_font.render(part, True, (45, 30, 20)), (box.left + 44, y))
+            y += dialogue_font.get_linesize()
+
+        if story_timer * TYPE_SPEED >= len(text):
+            bob = math.sin(pygame.time.get_ticks() / 220) * 5
+            ax, ay = box.right - 48, box.bottom - 34 + bob
+            pygame.draw.polygon(layer, (148, 90, 45), [(ax - 12, ay - 8), (ax + 12, ay - 8), (ax, ay + 8)])
+
+        # pops up with a slow bounce and fades in at the start of each picture
+        appear = ease_out_back(story_frame_timer / 650)
+        layer.set_alpha(int(255 * max(0, min(1, story_frame_timer / 300))))
+        shake_x, shake_y = 0, 0
+        if shake and story_timer > 0:
+            strength = 7 if story_timer < 700 else 3        # big shake at first, then keeps trembling
+            shake_x, shake_y = random.randint(-strength, strength), random.randint(-strength, strength)
+        screen.blit(layer, (dialogue_box.left + shake_x, dialogue_box.top - 44 + int((1 - appear) * 50) + shake_y))
+
     def draw_receipt():
         # the order, top right, so you remember it after closing the dialogue
         lines = [("------ Base ------", True), (BASE_NAMES[current_base], False), ("---- Toppings ----", True)]
@@ -524,13 +568,41 @@ async def main():
         screen.blit(label, label.get_rect(center=(rect.centerx - 4, rect.centery - 4)))
 
     # STORY FLOW (Sophia): cutscene frames -> tutorial (placeholder) -> game
+
+    def story_line():
+        return STORY_LINES[cutscene_index][tutorial_text_index]
+
     def next_story_screen():
-        nonlocal status, cutscene_index
+        nonlocal status, cutscene_index, tutorial_text_index, story_timer, story_frame_timer
         if status == "tutorial":
-            if cutscene_index < len(cutscene) - 1:
-                cutscene_index += 1
+            if cutscene_index in STORY_LINES:
+                # STORY: first finish typing, then the next line, then the next frame
+                text = story_line()[0]
+                if story_timer * TYPE_SPEED < len(text):
+                    story_timer = len(text) / TYPE_SPEED + 1000
+                elif tutorial_text_index < len(STORY_LINES[cutscene_index]) - 1:
+                    tutorial_text_index += 1
+                    story_timer = 0
+                else:
+                    tutorial_text_index = 0
+                    cutscene_index += 1
+                    story_timer = -450          # wait for the picture to fade in first
+                    story_frame_timer = -450
+                    if cutscene_index >= len(cutscene):
+                        status = "how_to_play"
+            elif cutscene_index in TUTORIAL_INSTRUCTIONS:
+                if tutorial_text_index < len(TUTORIAL_INSTRUCTIONS[cutscene_index]) - 1:
+                    tutorial_text_index += 1
+                else:
+                    tutorial_text_index = 0
+                    cutscene_index += 1
+                    if cutscene_index >= len(cutscene):
+                        status = "how_to_play"
             else:
-                status = "how_to_play"
+                cutscene_index += 1
+                tutorial_text_index = 0
+                if cutscene_index >= len(cutscene):
+                    status = "how_to_play"
         elif status == "how_to_play":
             status = "game"
 
@@ -585,6 +657,19 @@ async def main():
                 topping_name,
                 TOPPINGS[topping_name]["value"]
             ))
+
+    def draw_tutorial_text():
+        instruction = TUTORIAL_INSTRUCTIONS[cutscene_index][tutorial_text_index]
+        pygame.draw.rect(screen, (255, 248, 235), tutorial_box, border_radius=12)
+        pygame.draw.rect(screen, (148, 90, 45), tutorial_box, 3, border_radius=12)
+        lines = wrap_text(instruction, tutorial_font, tutorial_box.width - 30)
+        y = tutorial_box.top + 20
+        for line in lines:
+            text_surface = tutorial_font.render(line, True, (75, 50, 35))
+            screen.blit(text_surface, (tutorial_box.left + 15, y))
+            y += tutorial_font.get_linesize()
+            hint = tutorial_hint_font.render("SPACE to continue", True, (148, 90, 45))
+            screen.blit(hint, hint.get_rect(bottomright=(tutorial_box.right - 12, tutorial_box.bottom - 10)))
 
     def unlock_next_topping():
         nonlocal unlocked_toppings
@@ -668,8 +753,44 @@ async def main():
     customer_reacting = False
     reaction_timer = 0
 
-    cutscene = [pygame.image.load("assets/ui/cutscene_frame1.png"), pygame.image.load("assets/ui/cutscene_frame2.png")]
+    cutscene = [pygame.image.load("assets/ui/cutscene_frame1.png"), pygame.image.load("assets/ui/cutscene_frame2.png"), pygame.image.load("assets/ui/cutscene_frame3.png"), pygame.image.load("assets/ui/tutorial1.png"), pygame.image.load("assets/ui/tutorial2.png")]
+
     cutscene_index = 0
+    tutorial_text_index = 0
+
+    # STORY (Sophia): visual-novel lines for the first 3 cutscene frames. (text, shake?)
+    STORY_NAME = "You"
+    STORY_LINES = {
+        0: [
+            ("After resigning from my position as CEO of Nvidia 6 months ago, my life really sucks. I've just been bedrotting, I don't even wanna get up. I miss my wife and 3 girlfriends. Everyone calls me funky unc. My life is ruined...", False),
+            ("And worst of all...", False),
+        ],
+        1: [
+            ("I'M BROKE!!! I guess I'll have to sell my 24k gold labubu.", True),
+        ],
+        2: [
+            ("I can't even afford my favourite bubble tea that I used to get my girlfriend(s) anymore. That was the only way I could remember them... hmm, if I can't afford to buy it, I can always make my own.", False),
+        ],
+    }
+    story_timer = -450        # ms since the current line started (negative = wait for the screen fade)
+    story_frame_timer = -450  # ms since the current frame started (for the box popping in)
+
+    TUTORIAL_INSTRUCTIONS = {
+        3: [
+            "Welcome to Boba Comeback, where you attempt to bounce back financially after going horribly bankrupt!",
+            "Customers, like Peppa Pig over here, will come in and order drinks from you.",
+            "It is your job to correctly make them. The order matters!"
+        ],
+        4: [
+            "Click C to place a cup on the center board.",
+            "Then, click any of the three jars on the right to choose your base.",
+            "Click the right topping boxes to add toppings into the cup.",
+            "You'll notice that you only have three toppings unlocked at the beginning.",
+            "As you make more drinks, you'll unlock more toppings.",
+            "Press the CLEAR button to reset your cup, and press the SERVE button to give the customer the drink.",
+            "Make 100$ to fully bounce back from being so incredibly broke!"
+        ]
+    }
 
     # MAIN SCREEN BACKGROUND (Sophia)
     main_screen = pygame.transform.scale(pygame.image.load("assets/ui/background.png").convert(), (SCREEN_WIDTH, SCREEN_HEIGHT))
@@ -689,10 +810,9 @@ async def main():
     start_lift = 0       # hover animation, 0 = resting, 1 = fully lifted
     quit_lift = 0
 
-    # EMPTY CUP (Sophia): press C on the game screen to place it on the cutting board
-    CUP_POS = (559, 545)     # bottom-middle of the cup, on the cutting board
-    CUP_SCALE = 1.0          # make the cup (and its toppings) bigger or smaller, e.g. 1.3
-    served_base = None       # the drink that was just served (for the hand-over animation)
+    CUP_POS = (559, 545)
+    CUP_SCALE = 1.0  
+    served_base = None      
     served_toppings = []
     served_timer = 9999
     cup_shown = False
@@ -744,6 +864,10 @@ async def main():
     money_font = pygame.font.Font(FONT_PATH, 56)
     money_popup_text = ""
     displayed_money = 0      # the number on screen, slides toward money
+    # TUTORIAL TEXT BOX
+    tutorial_box = pygame.Rect(20, 110, 350, 250)
+    tutorial_font = pygame.font.Font(FONT_PATH, 30)
+    tutorial_hint_font = pygame.font.Font(FONT_PATH, 24)
     button_hover = {}        # hover animation for the custom buttons
     key_font = pygame.font.Font(FONT_PATH, 26)
     topping_drop_start = {}  # topping name -> time it was dropped in (for the bounce)
@@ -762,8 +886,6 @@ async def main():
         "C": (1000, 315),    # cup stacks
         "I": (801, 382),     # ice bucket
     }
-    
-    tutorial_text = []
 
     # CUSTOMER DIALOGUE (Sophia)
     # names must match the keys in CUSTOMERS
@@ -851,7 +973,6 @@ async def main():
                     # EMPTY CUP (Sophia)
                     get_cup()
                 elif event.key == K_i and status == "game" and customer is not None and not customer_reacting:
-                    # ICE (Sophia)
                     toggle_ice()
             elif event.type == MOUSEBUTTONDOWN:
                 if status == "mode_select":
@@ -861,10 +982,8 @@ async def main():
                         start_camera()
                         status = "title"
                 elif status in ("tutorial", "how_to_play"):
-                    # STORY FLOW (Sophia): click anywhere to go to the next screen
                     next_story_screen()
                 elif status == "title":
-                    # TITLE SCREEN (Sophia)
                     if title_timer > 1400:
                         if start_rect.collidepoint(event.pos):
                             status = "tutorial"
@@ -878,7 +997,6 @@ async def main():
                         else:
                             advance_dialogue()
                     elif CUP_STACK_ZONE.collidepoint(event.pos):
-                        # cups can be grabbed any time, like the C key
                         get_cup()
                     elif customer is not None and not customer_reacting:
                         if serve_button.collidepoint(event.pos):
@@ -930,12 +1048,10 @@ async def main():
             # TITLE SCREEN
             title_timer += dt
 
-            # background fades in from black
             main_screen.set_alpha(min(255, int(255 * title_timer / 600)))
             screen.blit(main_screen, (0, 0))
             main_screen.set_alpha(255)
 
-            # title drops in from above with a small bounce
             t = (title_timer - 400) / 700
             appear = ease_out_back(t)
             title_image.set_alpha(int(255 * max(0, min(1, t))))
@@ -958,6 +1074,14 @@ async def main():
             pass
         elif status == "tutorial":
             screen.blit(cutscene[cutscene_index], (0, 0))
+            if cutscene_index in STORY_LINES:
+                # STORY (Sophia): visual-novel dialogue over the picture
+                story_timer += dt
+                story_frame_timer += dt
+                text, shake = story_line()
+                draw_story_box(text, shake)
+            if cutscene_index in TUTORIAL_INSTRUCTIONS:
+                draw_tutorial_text()
         elif status == "how_to_play":
             # TUTORIAL SPOT (Sophia): black screen for now, put the tutorial here later
             hint_text = font.render("click to start", True, (90, 90, 90))
