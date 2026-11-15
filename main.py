@@ -488,7 +488,11 @@ async def main():
         label.set_alpha(alpha)
         screen.blit(label, label.get_rect(center=(rect.centerx - 4, rect.centery - 4)))
 
+<<<<<<< HEAD
     # STORY FLOW: cutscene frames -> tutorial (placeholder) -> game
+=======
+    # STORY FLOW cutscene frames -> tutorial -> game
+>>>>>>> 5613cf2679f4e647400916944e994a4cb3dfdfa0
     def next_story_screen():
         nonlocal status, cutscene_index, tutorial_text_index
         if status == "tutorial":
@@ -653,7 +657,11 @@ async def main():
     customer_reacting = False
     reaction_timer = 0
 
+<<<<<<< HEAD
     cutscene = [pygame.image.load("assets/ui/cutscene_frame1.png"), pygame.image.load("assets/ui/cutscene_frame2.png"), pygame.image.load("assets/ui/cutscene_frame3.png"), pygame.image.load("assets/ui/tutorial1.png"), pygame.image.load("assets/ui/tutorial2.png")]
+=======
+    cutscene = [pygame.image.load("assets/ui/cutscene_frame1.png"), pygame.image.load("assets/ui/cutscene_frame2.png"), pygame.image.load("assets/ui/cutscene_frame3.png")]
+>>>>>>> 5613cf2679f4e647400916944e994a4cb3dfdfa0
     cutscene_index = 0
     tutorial_text_index = 0
 
