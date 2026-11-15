@@ -1088,21 +1088,34 @@ async def main():
             if use_camera:
                 # HAND MODE TIPS (Sophia)
                 if camera_image is not None:
-                    draw_hand_preview(pygame.Rect(480, 40, 320, 240), False)
-                tips = pygame.Rect(0, 0, 640, 190)
-                tips.center = (640, 420)
+                    draw_hand_preview(pygame.Rect(530, 24, 220, 165), False)
+                # (text, colour, font): headings brown, the important rule in red
+                BROWN, RED, DARK = (148, 90, 45), (170, 60, 50), (60, 40, 25)
+                tip_lines = [
+                    ("HAND MODE: your hand gestures are ONLY for the toppings!", RED, font),
+                    ("- hold up 1-5 fingers to add a topping to the cup", DARK, name_font),
+                    ("- each number is a secret topping: you have to GUESS which finger", DARK, name_font),
+                    ("  count gives which topping (the box under the camera tells you)", DARK, name_font),
+                    ("- EVERYTHING ELSE works like the tutorial: get a cup (C), pick the", DARK, name_font),
+                    ("  base, add ice (I), then CLEAR (R) or SERVE (S) with the mouse/keys", DARK, name_font),
+                    ("Before you start:", BROWN, font),
+                    ("TEST: count 1-5 on your fingers, palm facing the screen!", RED, font),
+                    ("- ensure you're in good lighting, and nothing is blocking your hand", DARK, name_font)
+
+                ]
+                # box grows to fit the text
+                text_height = sum(line_font.get_linesize() + 4 for _, _, line_font in tip_lines) + 10
+                tips = pygame.Rect(0, 0, 1060, text_height + 44)
+                tips.midtop = (640, 205)
                 pygame.draw.rect(screen, (255, 250, 238), tips, border_radius=16)
                 pygame.draw.rect(screen, (148, 90, 45), tips, 3, border_radius=16)
-                tip_lines = ["Before you start (hand mode):",
-                             "- make sure you're in good lighting",
-                             "- nothing blocking your hand",
-                             "- palm facing the camera, fingers up"]
                 y = tips.top + 22
-                for number, line in enumerate(tip_lines):
-                    colour = (148, 90, 45) if number == 0 else (60, 40, 25)
-                    line_surface = font.render(line, True, colour)
-                    screen.blit(line_surface, line_surface.get_rect(midtop=(tips.centerx, y)))
-                    y += 40
+                for text, colour, line_font in tip_lines:
+                    if line_font == font and y > tips.top + 30:
+                        y += 10       # a little space before a heading
+                    line_surface = line_font.render(text, True, colour)
+                    screen.blit(line_surface, (tips.left + 36, y))
+                    y += line_font.get_linesize() + 4
         elif status == "game":
             # MAIN SCREEN BACKGROUND
             screen.blit(main_screen, (0, 0))
