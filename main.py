@@ -29,6 +29,9 @@ async def main():
     TOPPINGS = {
         #"pearls": {"image": pygame.image.load("assets/toppings/pearls.png"), "value": 10},
     }
+    BASES = {
+        """add stuff here"""
+    }
 
     print("CV_ON:", CV_ON)
 
@@ -117,7 +120,12 @@ async def main():
     # CUSTOMER DIALOGUE (Sophia)
     def fill_in_dialogue(line):
         toppings_text = " and ".join(current_order)
-        return line.format(base=current_base, toppings=toppings_text, topping=toppings_text)
+
+        return line.format(
+            base=current_base,
+            toppings=toppings_text,
+            topping=toppings_text
+        )
 
     def get_mood():
         # happy = right order, meh = some toppings right, angry = none right
@@ -176,6 +184,7 @@ async def main():
         nonlocal customer, current_order
 
         name = random.choice(list(CUSTOMERS.keys()))
+        current_base = random.choice(list(BASES.keys()))
         current_order = generate_order()
         customer = Customer(name, current_order)
 
@@ -280,7 +289,6 @@ async def main():
 
     # CUSTOMER DIALOGUE (Sophia)
     # names must match the keys in CUSTOMERS
-    BASES = ["milk tea", "taro milk tea", "matcha"]
     CUSTOMER_DIALOGUE = {
         "snoopy": {
             "order": ["A {base} with {toppings}... the perfect reward after a long day of napping."],
@@ -371,10 +379,11 @@ async def main():
                                 reaction_timer = 0
 
                                 if accepted:
+                                    money += BASES[current_base]["value"]
                                     money += sum(
                                         TOPPINGS[name]["value"]
                                         for name in current_order
-                                    )
+                                        )
 
                     # OPENCV MODE (Sophia): serve is still done with the mouse
                     if use_camera and customer is not None and not customer_reacting:
@@ -385,10 +394,11 @@ async def main():
                             reaction_timer = 0
 
                             if accepted:
+                                money += BASES[current_base]["value"]
                                 money += sum(
                                     TOPPINGS[name]["value"]
                                     for name in current_order
-                                )
+                                    )
 
         screen.fill((0, 0, 0))
 
@@ -579,11 +589,16 @@ async def main():
             # new customer walks up: pick a base and an order line
             if customer is not None and customer is not dialogue_customer:
                 dialogue_customer = customer
-                current_base = random.choice(BASES)
+
                 reaction_given = False
                 dialogue_text = ""
+
                 if customer.name in CUSTOMER_DIALOGUE:
-                    dialogue_text = fill_in_dialogue(random.choice(CUSTOMER_DIALOGUE[customer.name]["order"]))
+                    dialogue_text = fill_in_dialogue(
+                        random.choice(
+                            CUSTOMER_DIALOGUE[customer.name]["order"]
+                        )
+                    )
 
             # drink was served: switch to a reaction line
             if customer is not None and customer_reacting and not reaction_given:
