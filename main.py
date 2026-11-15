@@ -199,9 +199,14 @@ async def main():
         toppings.empty()
 
         positions = [
+            (150, 450),
             (300, 450),
-            (500, 450),
-            (700, 450)
+            (450, 450),
+            (600, 450),
+            (750, 450),
+            (900, 450),
+            (1050, 450),
+            (1200, 450)
         ]
 
         for index, topping_name in enumerate(available_toppings):
@@ -213,6 +218,13 @@ async def main():
                 topping_name,
                 TOPPINGS[topping_name]["value"]
             ))
+
+    def unlock_next_topping():
+        nonlocal unlocked_toppings
+        if unlocked_toppings < len(TOPPINGS):
+            unlocked_toppings += 1
+            available_toppings.append(TOPPINGS[unlocked_toppings - 1])
+            print("New topping unlocked:", TOPPINGS[unlocked_toppings - 1])
 
     class Customer:
             def __init__(self, name, order):
@@ -260,7 +272,8 @@ async def main():
 
     toppings = pygame.sprite.Group()
 
-    available_toppings = ['''add three here''']
+    available_toppings = list(TOPPINGS.keys())[:3]
+    unlocked_toppings = 3
     selected_toppings = []
     current_order = []
     customer = None
@@ -391,6 +404,7 @@ async def main():
                                         TOPPINGS[name]["value"]
                                         for name in current_order
                                         )
+                                    unlock_next_topping()
 
                     # OPENCV MODE (Sophia): serve is still done with the mouse
                     if use_camera and customer is not None and not customer_reacting:
@@ -406,6 +420,7 @@ async def main():
                                     TOPPINGS[name]["value"]
                                     for name in current_order
                                     )
+                                unlock_next_topping()
 
         screen.fill((0, 0, 0))
 
