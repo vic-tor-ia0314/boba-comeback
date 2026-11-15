@@ -59,8 +59,14 @@ async def main():
     finger_count = 0        # fingers counted this frame (both hands)
     held_count = 0          # the number being held right now
     hold_frames = 0         # how long it's been held
-    HOLD_TIME = 45          # 45 frames = about 1 second
+    MAX_HANDS = 1           # 1 = one hand (1-5 fingers, more reliable), 2 = both hands (1-8)
+    HOLD_TIME = 15          # frames to hold the same number (about 0.25-0.5 sec, depends on the camera's speed)
     waiting_for_reset = False
+    hand_points = []        # the 21 points of each hand found this frame (for drawing)
+    camera_size = (640, 480)
+    # which points to join with lines to draw the hand (wrist, then each finger)
+    HAND_LINES = [(0, 1), (1, 2), (2, 3), (3, 4), (0, 5), (5, 6), (6, 7), (7, 8), (5, 9), (9, 10), (10, 11), (11, 12),
+                  (9, 13), (13, 14), (14, 15), (15, 16), (13, 17), (17, 18), (18, 19), (19, 20), (0, 17)]
 
     # finger number -> topping. Names must match the keys in TOPPINGS
     HAND_TOPPINGS = ["pearls", "grassjelly", "coconutjelly", "strawberrypearls",
@@ -111,14 +117,72 @@ async def main():
         return count
 
     def count_all_fingers(frame):
+        nonlocal hand_points, camera_size
         total = 0
+        hand_points = []
+        camera_size = (frame.shape[1], frame.shape[0])
         palms = palm_detector.infer(frame)
-        for palm in palms[:2]:                       # only the first 2 hands
+        for palm in palms[:MAX_HANDS]:               # only look at MAX_HANDS hands
             hand = hand_detector.infer(frame, palm)
             if hand is not None:
                 points = hand[4:67].reshape(21, 3)    # 21 points, each (x, y, z)
+                hand_points.append(points)
                 total += count_fingers_on_hand(points)
         return total
+
+    def draw_hand_preview(preview=None, show_info=True):
+        # webcam preview (top right by default) with the tracked hands drawn on top
+        if preview is None:
+            preview = pygame.Rect(SCREEN_WIDTH - 340, 16, 320, 240)
+        pygame.draw.rect(screen, (148, 90, 45), preview.inflate(10, 10), border_radius=12)
+        screen.blit(pygame.transform.scale(camera_image, preview.size), preview)
+        scale_x = preview.width / camera_size[0]
+        scale_y = preview.height / camera_size[1]
+        for points in hand_points:
+            spots = [(preview.left + int(p[0] * scale_x), preview.top + int(p[1] * scale_y)) for p in points]
+            for a, b in HAND_LINES:
+                pygame.draw.line(screen, (255, 244, 220), spots[a], spots[b], 3)
+            for spot in spots:
+                pygame.draw.circle(screen, (122, 150, 112), spot, 5)
+                pygame.draw.circle(screen, (255, 244, 220), spot, 5, 1)
+
+        # finger count badge on the preview
+        badge = pygame.Rect(preview.left + 10, preview.bottom - 58, 58, 48)
+        pygame.draw.rect(screen, SAGE, badge, border_radius=10)
+        number = money_font.render(str(finger_count), True, (255, 244, 220))
+        screen.blit(number, number.get_rect(center=badge.center))
+        if len(hand_points) == 0:
+            hint = key_font.render("show your hands", True, (255, 244, 220))
+            screen.blit(hint, hint.get_rect(midleft=(badge.right + 10, badge.centery)))
+
+        if not show_info:
+            return
+
+        # what the number picks + hold progress bar, under the preview
+        info = pygame.Rect(preview.left - 5, preview.bottom + 10, preview.width + 10, 64)
+        pygame.draw.rect(screen, (255, 250, 238), info, border_radius=10)
+        pygame.draw.rect(screen, (148, 90, 45), info, 3, border_radius=10)
+        if picking_toppings():
+            if 1 <= finger_count <= len(HAND_TOPPINGS):
+                name = HAND_TOPPINGS[finger_count - 1]
+                locked = name not in available_toppings
+                text = str(finger_count) + " = " + TOPPING_NAMES[name] + (" (locked)" if locked else "")
+            else:
+                text = "hold up 1-" + str(5 if MAX_HANDS == 1 else 8) + " fingers"
+            if waiting_for_reset:
+                text = "added! put your hands down"
+        elif customer is not None and not customer_reacting:
+            text = "toppings done! serve [S]"
+        else:
+            text = "waiting for a customer..."
+        label = key_font.render(text, True, (110, 62, 30))
+        screen.blit(label, label.get_rect(midtop=(info.centerx, info.top + 8)))
+        bar = pygame.Rect(info.left + 14, info.bottom - 22, info.width - 28, 12)
+        pygame.draw.rect(screen, (230, 215, 190), bar, border_radius=6)
+        if picking_toppings() and hold_frames > 0:
+            filled = bar.copy()
+            filled.width = int(bar.width * min(1, hold_frames / HOLD_TIME))
+            pygame.draw.rect(screen, (122, 150, 112), filled, border_radius=6)
 
     def add_topping(name):
         # adds a topping to the cup (in the order you pick them), max 3, only unlocked ones
@@ -369,8 +433,10 @@ async def main():
         line_height = receipt_font.get_linesize()
         width = 280
         height = 30 + line_height * len(lines)
-        top = 20 if not use_camera else 260          # below the webcam preview in hand mode
-        paper = pygame.Rect(SCREEN_WIDTH - width - 20, top, width, height)
+        if use_camera:
+            paper = pygame.Rect(290, 16, width, height)                     # next to the money box in hand mode
+        else:
+            paper = pygame.Rect(SCREEN_WIDTH - width - 20, 20, width, height)  # top right in clicking mode
         pygame.draw.rect(screen, (255, 250, 238), paper, border_radius=6)
         pygame.draw.rect(screen, (148, 90, 45), paper, 3, border_radius=6)
         y = paper.top + 15
@@ -501,7 +567,7 @@ async def main():
                 self.order = order
                 self.base = base
                 self.image = CUSTOMERS[name]["default"]
-                self.rect = self.image.get_rect(center=(850, 150))
+                self.rect = self.image.get_rect(center=(850, 180))
                 self.spawn_time = pygame.time.get_ticks() 
     
             def check_order(self, selected_toppings, selected_base):
@@ -785,11 +851,10 @@ async def main():
             ok, frame = camera.read()
             if ok:
                 frame = cv2.flip(frame, 1)
-                if status == "game" and picking_toppings():
+                if status in ("game", "how_to_play"):
                     finger_count = count_all_fingers(frame)
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 camera_image = pygame.image.frombuffer(frame.tobytes(), (frame.shape[1], frame.shape[0]), "RGB")
-                screen.blit(camera_image, (0, 0))
 
         if status == "mode_select":
             screen.blit(main_screen, (0, 0))
@@ -837,12 +902,27 @@ async def main():
             # TUTORIAL SPOT (Sophia): black screen for now, put the tutorial here later
             hint_text = font.render("click to start", True, (90, 90, 90))
             screen.blit(hint_text, hint_text.get_rect(center=(640, 680)))
+            if use_camera:
+                # HAND MODE TIPS (Sophia)
+                if camera_image is not None:
+                    draw_hand_preview(pygame.Rect(480, 40, 320, 240), False)
+                tips = pygame.Rect(0, 0, 640, 190)
+                tips.center = (640, 420)
+                pygame.draw.rect(screen, (255, 250, 238), tips, border_radius=16)
+                pygame.draw.rect(screen, (148, 90, 45), tips, 3, border_radius=16)
+                tip_lines = ["Before you start (hand mode):",
+                             "- make sure you're in good lighting",
+                             "- nothing blocking your hand",
+                             "- palm facing the camera, fingers up"]
+                y = tips.top + 22
+                for number, line in enumerate(tip_lines):
+                    colour = (148, 90, 45) if number == 0 else (60, 40, 25)
+                    line_surface = font.render(line, True, colour)
+                    screen.blit(line_surface, line_surface.get_rect(midtop=(tips.centerx, y)))
+                    y += 40
         elif status == "game":
             # MAIN SCREEN BACKGROUND
             screen.blit(main_screen, (0, 0))
-            if use_camera and camera_image is not None:
-                # small webcam preview so players can still see their hands
-                screen.blit(pygame.transform.scale(camera_image, (320, 240)), (SCREEN_WIDTH - 330, 10))
 
             # CUSTOMER TIMER: next customer comes after the wait, served customers leave after 2 sec
             if customer is None and not customer_reacting:
@@ -906,6 +986,9 @@ async def main():
                         hold_frames = 0
                     elif waiting_for_reset:
                         pass
+                    elif finger_count > len(HAND_TOPPINGS) or HAND_TOPPINGS[finger_count - 1] not in available_toppings:
+                        hold_frames = 0      # 9-10 fingers, or a locked topping: nothing to pick
+                        held_count = finger_count
                     elif finger_count == held_count:
                         hold_frames += 1
                         if hold_frames >= HOLD_TIME and finger_count <= len(HAND_TOPPINGS):
@@ -916,15 +999,10 @@ async def main():
                         held_count = finger_count
                         hold_frames = 0
 
-                    fingers_text = font.render("Fingers: " + str(finger_count), True, (255, 255, 255))
-                    screen.blit(fingers_text, (20, 110))
-                    pygame.draw.rect(screen, (255, 255, 255), (20, 150, 300, 25), 2)
-                    pygame.draw.rect(screen, (255, 255, 255), (20, 150, int(300 * hold_frames / HOLD_TIME), 25))
 
-                # TOPPINGS DONE
-                elif customer is not None and not customer_reacting:
-                    done_text = font.render("Toppings done! Click SERVE", True, (255, 255, 255))
-                    screen.blit(done_text, (20, 110))
+            # HAND PREVIEW (Sophia): webcam with your tracked hands, the count, and the hold bar
+            if use_camera and camera_image is not None:
+                draw_hand_preview()
 
             # CUSTOMER DIALOGUE (Sophia)
             # new customer walks up: show their order line
