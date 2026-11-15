@@ -27,7 +27,14 @@ async def main():
         "redpanda":{"default":pygame.image.load("assets/characters/redpanda_default.png"), "angry":pygame.image.load("assets/characters/redpanda_angry.png"), "happy":pygame.image.load("assets/characters/redpanda_happy.png")},
     }
     TOPPINGS = {
-        #"pearls": {"image": pygame.image.load("assets/toppings/pearls.png"), "value": 10},
+        "pearls": {"image": pygame.image.load("assets/toppings/pearls.png"), "value": 10},
+        "grassjelly": {"image": pygame.image.load("assets/toppings/grass_jelly.png"), "value": 15},
+        "coconut":{"image": pygame.image.load("assets/toppings/coconut.png"), "value": 10},
+        "strawberryboba":{"image": pygame.image.load("assets/toppings/strawberryboba.png"), "value": 10},
+        "mangoboba":{"image": pygame.image.load("assets/toppings/mangoboba.png"), "value": 10},
+        "strawberrychunk":{"image": pygame.image.load("assets/toppings/strawberry.png"), "value": 20},
+        "mangochunk":{"image": pygame.image.load("assets/toppings/mango.png"), "value": 20},
+        "redbean":{"image": pygame.image.load("assets/toppings/redbean.png"), "value": 20}
     }
     BASES = {
         """add stuff here"""
@@ -48,8 +55,8 @@ async def main():
     waiting_for_reset = False
 
     # finger number -> topping. Names must match the keys in TOPPINGS
-    HAND_TOPPINGS = ["pearls", "grass jelly", "coconut jelly", "strawberry popping boba",
-                     "mango popping boba", "mango chunks", "strawberry chunks", "red bean"]
+    HAND_TOPPINGS = ["pearls", "grass jelly", "coconut jelly", "strawberry boba",
+                     "mango boba", "mango chunks", "strawberry chunks", "red bean"]
 
     # DEFAULT FONT (Sophia): falls back to pygame's font if the file is missing
     FONT_PATH = "assets/VT323-Regular.ttf"
