@@ -120,9 +120,13 @@ async def main():
                 total += count_fingers_on_hand(points)
         return total
 
-    def add_topping_by_hand(name):
-        if name not in selected_toppings:
+    def add_topping(name):
+        # adds a topping to the cup (in the order you pick them), max 3, only unlocked ones
+        if name in available_toppings and name not in selected_toppings and len(selected_toppings) < 3:
             selected_toppings.append(name)
+
+    def add_topping_by_hand(name):
+        add_topping(name)
 
     def picking_toppings():
         # hand motions only work while a customer is waiting and the toppings aren't done
@@ -133,19 +137,203 @@ async def main():
         return True
 
     # CUSTOMER DIALOGUE (Sophia)
+    def nice_list(names):
+        # ["pearls", "redbean", "mangochunks"] -> "pearls, red bean and mango chunks"
+        words = [TOPPING_NAMES.get(name, name) for name in names]
+        if len(words) == 0:
+            return "no toppings"
+        if len(words) == 1:
+            return words[0]
+        return ", ".join(words[:-1]) + " and " + words[-1]
+
     def fill_in_dialogue(line):
-        toppings_text = " and ".join(current_order) if current_order else "no toppings"
+        toppings_text = nice_list(current_order)
         return line.format(base=BASE_NAMES.get(current_base, current_base), toppings=toppings_text, topping=toppings_text)
 
     def get_mood():
-        # happy = right order, meh = some toppings right, angry = none right
-        if set(selected_toppings) == set(current_order):
+        # happy = right base + right toppings in the right order
+        # meh   = right base, but toppings in the wrong order (or only some toppings right)
+        # angry = wrong base, or none of the toppings right
+        correct_base = selected_base == current_base
+        if correct_base and selected_toppings == current_order:
             return "happy"
-        else:
-            for name in selected_toppings:
-                if name in current_order:
-                    return "meh"
+        if correct_base and set(selected_toppings) == set(current_order):
+            return "meh"
+        if correct_base and any(name in current_order for name in selected_toppings):
+            return "meh"
         return "angry"
+
+    def order_total():
+        # what the customer pays for a perfect drink
+        return BASES[current_base]["value"] + sum(TOPPINGS[name]["value"] for name in current_order)
+
+    def serve_drink():
+        # MONEY ONLY CHANGES HERE: happy = full price, meh = half, angry = you lose half (wasted ingredients)
+        nonlocal money, customer_reacting, reaction_timer, last_mood, money_popup_text, money_popup_timer
+        nonlocal cup_shown, selected_base, served_base, served_toppings, served_timer
+        last_mood = get_mood()
+        total = order_total()
+        if last_mood == "happy":
+            change = total
+            unlock_next_topping()
+        elif last_mood == "meh":
+            change = total // 2
+        else:
+            change = -(total // 2)
+        money += change
+        money_popup_text = ("+$" if change >= 0 else "-$") + str(abs(change))
+        money_popup_timer = 0
+        customer.image = CUSTOMERS[customer.name].get(last_mood, CUSTOMERS[customer.name]["default"])
+        customer_reacting = True
+        reaction_timer = 0
+        # the drink is handed over: it leaves the counter, press C for a new cup
+        served_base = selected_base
+        served_toppings = list(selected_toppings)
+        served_timer = 0
+        cup_shown = False
+        selected_base = None
+        selected_toppings.clear()
+
+    def draw_money():
+        # big sage-green money box in the top left
+        panel = pygame.Rect(20, 16, 250, 76)
+        pygame.draw.rect(screen, (245, 240, 225), panel, border_radius=14)
+        pygame.draw.rect(screen, SAGE, panel, 4, border_radius=14)
+        sign_box = pygame.Rect(panel.left + 12, panel.top + 12, 52, 52)
+        pygame.draw.rect(screen, SAGE, sign_box, border_radius=10)
+        sign = money_font.render("$", True, (245, 240, 225))
+        screen.blit(sign, sign.get_rect(center=sign_box.center))
+        amount_colour = SAGE if money >= 0 else (150, 60, 50)
+        amount = money_font.render(str(money), True, amount_colour)
+        screen.blit(amount, amount.get_rect(midleft=(sign_box.right + 14, panel.centery)))
+        # +$ / -$ floats up and fades after serving
+        if money_popup_text != "" and money_popup_timer < 1300:
+            popup_colour = SAGE if money_popup_text.startswith("+") else (150, 60, 50)
+            popup = font.render(money_popup_text, True, popup_colour)
+            popup.set_alpha(int(255 * (1 - money_popup_timer / 1300)))
+            screen.blit(popup, popup.get_rect(midleft=(panel.right + 14, panel.centery - int(money_popup_timer / 40))))
+
+    def draw_topping_buttons(mouse_pos):
+        # soft hover buttons over the 4 x 2 topping jars on the background
+        for name, zone in TOPPING_ZONES.items():
+            target = 1 if zone.collidepoint(mouse_pos) else 0
+            topping_hover[name] += (target - topping_hover[name]) * 0.2
+            amount = topping_hover[name]
+            if amount < 0.02:
+                continue
+            unlocked = name in available_toppings
+            glow = pygame.Surface(zone.size, pygame.SRCALPHA)
+            fill = (255, 250, 238, int(110 * amount)) if unlocked else (60, 60, 60, int(110 * amount))
+            pygame.draw.rect(glow, fill, glow.get_rect(), border_radius=12)
+            screen.blit(glow, zone)
+            border = pygame.Surface(zone.size, pygame.SRCALPHA)
+            border_colour = (148, 90, 45, int(255 * amount)) if unlocked else (90, 90, 90, int(255 * amount))
+            pygame.draw.rect(border, border_colour, border.get_rect(), 3, border_radius=12)
+            screen.blit(border, zone)
+            # name tag above the jar
+            text = TOPPING_NAMES[name] if unlocked else "locked"
+            label = tag_font.render(text, True, (255, 250, 238))
+            tag = label.get_rect(midbottom=(zone.centerx, zone.top - 6 - int(4 * amount))).inflate(16, 8)
+            tag_surface = pygame.Surface(tag.size, pygame.SRCALPHA)
+            tag_colour = (148, 90, 45, int(235 * amount)) if unlocked else (90, 90, 90, int(235 * amount))
+            pygame.draw.rect(tag_surface, tag_colour, tag_surface.get_rect(), border_radius=8)
+            screen.blit(tag_surface, tag)
+            label.set_alpha(int(255 * amount))
+            screen.blit(label, label.get_rect(center=tag.center))
+
+    def draw_cup(base, cup_toppings, bottom_middle, size, alpha):
+        # one cup with its base and toppings, plus a soft shadow so it stands out from the board
+        picture = cup_image if base is None else BASES[base]["image"]
+        width = max(1, int(picture.get_width() * size))
+        height = max(1, int(picture.get_height() * size))
+        shadow = pygame.Surface((int(width * 0.9) + 2, 22), pygame.SRCALPHA)
+        pygame.draw.ellipse(shadow, (60, 35, 20, int(70 * alpha / 255)), shadow.get_rect())
+        screen.blit(shadow, shadow.get_rect(center=(bottom_middle[0], bottom_middle[1] - 2)))
+        layers = [picture] + [TOPPINGS[name]["image"] for name in cup_toppings]
+        for image in layers:
+            scaled = pygame.transform.smoothscale(image, (max(1, int(image.get_width() * size)), max(1, int(image.get_height() * size))))
+            scaled.set_alpha(alpha)
+            screen.blit(scaled, scaled.get_rect(midbottom=bottom_middle))
+
+    def dialogue_done_typing():
+        return dialogue_timer * TYPE_SPEED >= len(dialogue_text)
+
+    def advance_dialogue():
+        # click / Enter: first finish the typing, then close the box
+        nonlocal dialogue_timer, dialogue_visible
+        if not dialogue_done_typing():
+            dialogue_timer = len(dialogue_text) / TYPE_SPEED + 1000
+        else:
+            dialogue_visible = False
+
+    def draw_dialogue():
+        # everything is drawn on its own layer so the whole box can fade in and out together
+        layer = pygame.Surface((dialogue_box.width, dialogue_box.height + 44), pygame.SRCALPHA)
+        box = pygame.Rect(0, 44, dialogue_box.width, dialogue_box.height)
+        layer.blit(pygame.transform.smoothscale(dialogue_image, box.size), box)
+
+        # name tab on the top left
+        if customer is not None:
+            name = CUSTOMER_DISPLAY_NAMES.get(customer.name, customer.name.title())
+            name_surface = name_font.render(name, True, (255, 244, 220))
+            tab = pygame.Rect(28, 4, name_surface.get_width() + 44, 48)
+            pygame.draw.rect(layer, (148, 90, 45), tab, border_radius=12)
+            pygame.draw.rect(layer, (110, 62, 30), tab, 3, border_radius=12)
+            layer.blit(name_surface, name_surface.get_rect(center=tab.center))
+
+        # typewriter text: letters appear one by one, already wrapped so words don't jump lines
+        letters_shown = int(dialogue_timer * TYPE_SPEED)
+        y = box.top + 30
+        for line in wrap_text(dialogue_text, dialogue_font, box.width - 140):
+            if letters_shown <= 0:
+                break
+            part = line[:letters_shown]
+            letters_shown -= len(line) + 1
+            layer.blit(dialogue_font.render(part, True, (45, 30, 20)), (box.left + 44, y))
+            y += dialogue_font.get_linesize()
+
+        # X button (top right of the box)
+        close = dialogue_close_button.move(-dialogue_box.left, -dialogue_box.top + 44)
+        pygame.draw.rect(layer, (180, 90, 90), close, border_radius=8)
+        pygame.draw.rect(layer, (255, 255, 255), close, 2, border_radius=8)
+        x_text = font.render("X", True, (255, 255, 255))
+        layer.blit(x_text, x_text.get_rect(center=close.center))
+
+        # little arrow that bobs up and down once the text is done
+        if dialogue_done_typing():
+            bob = math.sin(pygame.time.get_ticks() / 220) * 5
+            ax, ay = box.right - 48, box.bottom - 34 + bob
+            pygame.draw.polygon(layer, (148, 90, 45), [(ax - 12, ay - 8), (ax + 12, ay - 8), (ax, ay + 8)])
+
+        # pop up slowly with the same bounce as the customers, and fade in / out
+        appear = ease_out_back(dialogue_timer / 650)
+        alpha = min(dialogue_fade, max(0, min(1, dialogue_timer / 300)))
+        layer.set_alpha(int(255 * alpha))
+        screen.blit(layer, (dialogue_box.left, dialogue_box.top - 44 + int((1 - appear) * 50)))
+
+    def draw_receipt():
+        # the order, top right, so you remember it after closing the dialogue
+        lines = [("------ Base ------", True), (BASE_NAMES[current_base], False), ("---- Toppings ----", True)]
+        if current_order:
+            for number, name in enumerate(current_order, 1):
+                lines.append((str(number) + ". " + TOPPING_NAMES[name], False))
+        else:
+            lines.append(("none", False))
+        lines.append(("------ Total ------", True))
+        lines.append(("$" + str(order_total()), False))
+        line_height = receipt_font.get_linesize()
+        width = 280
+        height = 30 + line_height * len(lines)
+        top = 20 if not use_camera else 260          # below the webcam preview in hand mode
+        paper = pygame.Rect(SCREEN_WIDTH - width - 20, top, width, height)
+        pygame.draw.rect(screen, (255, 250, 238), paper, border_radius=6)
+        pygame.draw.rect(screen, (148, 90, 45), paper, 3, border_radius=6)
+        y = paper.top + 15
+        for text, is_heading in lines:
+            colour = (148, 90, 45) if is_heading else (40, 30, 20)
+            line_surface = receipt_font.render(text, True, colour)
+            screen.blit(line_surface, line_surface.get_rect(midtop=(paper.centerx, y)))
+            y += line_height
 
     def wrap_text(text, font, max_width):
         words = text.split()
@@ -212,8 +400,8 @@ async def main():
     def generate_order():
         if len(available_toppings) == 0:
             return []    # no toppings set up yet: customers order just a base
-        number = random.randint(1, len(available_toppings))
-        return random.sample(available_toppings, number)
+        number = random.randint(1, min(3, len(available_toppings)))
+        return random.sample(available_toppings, number)    # the order of this list matters
 
     def new_customer():
         nonlocal customer, current_order, current_base, selected_base
@@ -252,8 +440,9 @@ async def main():
         nonlocal unlocked_toppings
         if unlocked_toppings < len(TOPPINGS):
             unlocked_toppings += 1
-            available_toppings.append(TOPPINGS[unlocked_toppings - 1])
-            print("New topping unlocked:", TOPPINGS[unlocked_toppings - 1])
+            new_topping = list(TOPPINGS.keys())[unlocked_toppings - 1]
+            available_toppings.append(new_topping)
+            print("New topping unlocked:", new_topping)
 
     def clear_drink():
         nonlocal selected_base, cup_timer
@@ -350,7 +539,11 @@ async def main():
     quit_lift = 0
 
     # EMPTY CUP (Sophia): press C on the game screen to place it on the cutting board
-    CUP_POS = (555, 575)     # bottom-middle of the cup, on the cutting board
+    CUP_POS = (559, 545)     # bottom-middle of the cup, on the cutting board
+    CUP_SCALE = 1.0          # make the cup (and its toppings) bigger or smaller, e.g. 1.3
+    served_base = None       # the drink that was just served (for the hand-over animation)
+    served_toppings = []
+    served_timer = 9999
     cup_shown = False
     cup_timer = 0            # for the pop-up animation (ms)
 
@@ -361,6 +554,36 @@ async def main():
         "milktea": pygame.Rect(1170, 430, 105, 160),   # brown jar
     }
     selected_base = None     # None = empty cup
+
+    # TOPPING BUTTONS (Sophia): the 4 x 2 jars on the left of the background
+    TOPPING_ZONES = {
+        "pearls": pygame.Rect(75, 438, 85, 90),
+        "coconutjelly": pygame.Rect(167, 438, 75, 90),
+        "redbean": pygame.Rect(247, 438, 75, 90),
+        "mangochunks": pygame.Rect(326, 438, 64, 90),
+        "strawberrychunks": pygame.Rect(78, 560, 70, 90),
+        "grassjelly": pygame.Rect(152, 560, 72, 90),
+        "mangopearls": pygame.Rect(233, 560, 70, 90),
+        "strawberrypearls": pygame.Rect(311, 560, 66, 90),
+    }
+    TOPPING_NAMES = {
+        "pearls": "pearls", "coconutjelly": "coconut jelly", "redbean": "red bean",
+        "mangochunks": "mango chunks", "strawberrychunks": "strawberry chunks",
+        "grassjelly": "grass jelly", "mangopearls": "popping mango boba",
+        "strawberrypearls": "popping strawberry boba",
+    }
+    topping_hover = {name: 0 for name in TOPPING_ZONES}   # hover animation, 0 to 1
+    tag_font = pygame.font.Font(FONT_PATH, 24)
+
+    # MONEY (Sophia)
+    SAGE = (78, 104, 72)
+    money_font = pygame.font.Font(FONT_PATH, 56)
+    money_popup_text = ""
+    money_popup_timer = 0
+    last_mood = "happy"
+
+    # RECEIPT (Sophia)
+    receipt_font = pygame.font.Font(FONT_PATH, 26)
 
     # KEY HINTS (Sophia): letter -> spot just above the thing on the counter
     KEY_HINTS = {
@@ -406,9 +629,15 @@ async def main():
         },
     }
     dialogue_font = pygame.font.Font(FONT_PATH, 36)
-    dialogue_box = pygame.Rect(30, 520, 950, 180)     # bottom of the screen, left of the SERVE button
-    dialogue_close_button = pygame.Rect(900, 525, 65, 35)
+    name_font = pygame.font.Font(FONT_PATH, 32)
+    dialogue_box = pygame.Rect(16, 552, SCREEN_WIDTH - 32, 156)     # spans the whole bottom of the screen
+    dialogue_close_button = pygame.Rect(dialogue_box.right - 58, dialogue_box.top + 12, 44, 36)
     dialogue_visible = True
+    dialogue_timer = 0       # ms since the current line started (pop-in + typing)
+    dialogue_fade = 0        # 0 = hidden, 1 = fully shown (smooth fade in/out)
+    TYPE_SPEED = 0.045       # letters per ms (about 45 letters a second)
+    CUSTOMER_DISPLAY_NAMES = {"hamster": "Hamster", "chiikawa": "Chiikawa", "peppapig": "Peppa",
+                              "redpanda": "Red Panda", "snoopy": "Snoopy"}
     dialogue_customer = None     # the customer the current dialogue belongs to
     dialogue_text = ""
     current_base = None
@@ -432,6 +661,9 @@ async def main():
                     status = "tutorial"
                 elif (event.key == K_RETURN or event.key == K_SPACE) and status in ("tutorial", "how_to_play"):
                     next_story_screen()
+                elif (event.key == K_RETURN or event.key == K_SPACE) and status == "game" and dialogue_text != "" and dialogue_visible:
+                    # DIALOGUE: Enter finishes the text / closes it
+                    advance_dialogue()
                 elif event.key == K_c and status == "game":
                     # EMPTY CUP (Sophia)
                     cup_shown = True
@@ -454,55 +686,27 @@ async def main():
                         elif quit_rect.collidepoint(event.pos):
                             running = False
                 elif status == "game":
-                    if dialogue_text != "" and dialogue_close_button.collidepoint(event.pos):
-                        dialogue_visible = False
-                    if not use_camera and customer is not None and not customer_reacting:
-                            clicked = False
-
-                            for topping in reversed(toppings.sprites()):
-                                if topping.rect.collidepoint(event.pos) and not clicked:
-                                    topping.handle_click()
-                                    clicked = True
-
-                            if serve_button.collidepoint(event.pos):
-                                accepted = customer.check_order(selected_toppings, selected_base)
-
-                                customer_reacting = True
-                                reaction_timer = 0
-
-                                if accepted:
-                                    money += BASES[current_base]["value"]
-                                    money += sum(
-                                        TOPPINGS[name]["value"]
-                                        for name in current_order
-                                        )
-                                    unlock_next_topping()
-
-                    # OPENCV MODE (Sophia): serve is still done with the mouse
-                    if use_camera and customer is not None and not customer_reacting:
+                    if dialogue_text != "" and dialogue_visible:
+                        # DIALOGUE: X closes it, clicking anywhere else finishes the text / closes it
+                        if dialogue_close_button.collidepoint(event.pos):
+                            dialogue_visible = False
+                        else:
+                            advance_dialogue()
+                    elif customer is not None and not customer_reacting:
                         if serve_button.collidepoint(event.pos):
-                            accepted = customer.check_order(selected_toppings, selected_base)
-
-                            customer_reacting = True
-                            reaction_timer = 0
-
-                            if accepted:
-                                money += BASES[current_base]["value"]
-                                money += sum(
-                                    TOPPINGS[name]["value"]
-                                    for name in current_order
-                                    )
-                                unlock_next_topping()
-
-                    # BASES (Sophia): click a jar to fill the cup (cup has to be out first, press C)
-                    if cup_shown:
-                        for base_name, zone in BASE_ZONES.items():
-                            if zone.collidepoint(event.pos):
-                                selected_base = base_name
-
-                    if clear_button.collidepoint(event.pos):
-                        if customer is not None and not customer_reacting and cup_shown:
-                            clear_drink()
+                            serve_drink()
+                        elif clear_button.collidepoint(event.pos):
+                            if cup_shown:
+                                clear_drink()
+                        elif cup_shown:
+                            # BASES: click a jar to fill the cup
+                            for base_name, zone in BASE_ZONES.items():
+                                if zone.collidepoint(event.pos):
+                                    selected_base = base_name
+                            # TOPPINGS: click a jar to add it (in order)
+                            for topping_name, zone in TOPPING_ZONES.items():
+                                if zone.collidepoint(event.pos):
+                                    add_topping(topping_name)
 
         screen.fill((0, 0, 0))
 
@@ -569,13 +773,37 @@ async def main():
                 # small webcam preview so players can still see their hands
                 screen.blit(pygame.transform.scale(camera_image, (320, 240)), (SCREEN_WIDTH - 330, 10))
 
-            # EMPTY CUP (Sophia): pops up with a small bounce
+            # CUSTOMER TIMER: next customer comes after the wait, served customers leave after 2 sec
+            if customer is None and not customer_reacting:
+                customer_timer += dt
+                if customer_timer >= next_customer_time:
+                    new_customer()
+                    customer_timer = 0
+
+            if customer_reacting:
+                reaction_timer += dt
+                if reaction_timer >= 2000:
+                    customer = None
+                    customer_reacting = False
+                    reaction_timer = 0
+                    customer_timer = 0
+                    next_customer_time = random.randint(3000, 7000)
+
+            # DRAW CUSTOMER
+            if customer is not None:
+                customer.draw(screen)
+
+            # EMPTY CUP (Sophia): pops up with a small bounce, then shows the base and toppings
             if cup_shown:
                 cup_timer += dt
-                size = max(0.01, ease_out_back(cup_timer / 350))
-                cup_picture = cup_image if selected_base is None else BASES[selected_base]["image"]
-                cup = pygame.transform.smoothscale(cup_picture, (max(1, int(cup_picture.get_width() * size)), max(1, int(cup_picture.get_height() * size))))
-                screen.blit(cup, cup.get_rect(midbottom=CUP_POS))
+                size = max(0.01, ease_out_back(cup_timer / 350)) * CUP_SCALE
+                draw_cup(selected_base, selected_toppings, CUP_POS, size, 255)
+
+            # SERVED DRINK: slides up toward the customer and fades out
+            served_timer += dt
+            if served_timer < 450:
+                t = served_timer / 450
+                draw_cup(served_base, served_toppings, (CUP_POS[0], CUP_POS[1] - int(t * 120)), CUP_SCALE, int(255 * (1 - t)))
 
             # BASES (Sophia): hover highlight on the jars (temporary look)
             mouse_pos = pygame.mouse.get_pos()
@@ -588,36 +816,26 @@ async def main():
                     base_label = font.render(base_name, True, (148, 90, 45))
                     screen.blit(base_label, base_label.get_rect(midbottom=(zone.centerx, zone.top - 4)))
 
+            # TOPPING BUTTONS (Sophia)
+            draw_topping_buttons(mouse_pos)
+
             # KEY HINTS (Sophia)
             for letter, pos in KEY_HINTS.items():
                 draw_key_hint(letter, pos)
 
+            # SERVE BUTTON
+            pygame.draw.rect(screen, (148, 90, 45), serve_button, 3)
+            serve_text = font.render("SERVE", True, (148, 90, 45))
+            screen.blit(serve_text, serve_text.get_rect(center=serve_button.center))
+
+            # CLEAR BUTTON
+            pygame.draw.rect(screen, (180, 90, 90), clear_button, border_radius=10)
+            pygame.draw.rect(screen, (255, 255, 255), clear_button, 2, border_radius=10)
+            clear_text = font.render("CLEAR", True, (255, 255, 255))
+            screen.blit(clear_text, clear_text.get_rect(center=clear_button.center))
+
             if use_camera:
-                # OPENCV MODE (Sophia): same as clicking mode, but toppings are picked with fingers
-                if customer is None and not customer_reacting:
-                    customer_timer += dt
-
-                    if customer_timer >= next_customer_time:
-                        new_customer()
-                        customer_timer = 0
-
-                # CUSTOMER REACTION
-                if customer_reacting:
-                    reaction_timer += dt
-
-                    if reaction_timer >= 2000:
-                        customer = None
-                        customer_reacting = False
-                        reaction_timer = 0
-                        #new customer wait time
-                        customer_timer = 0
-                        next_customer_time = random.randint(3000, 7000)
-
-                # DRAW CUSTOMER
-                if customer is not None:
-                    customer.draw(screen)
-
-                # PICK TOPPINGS WITH FINGERS
+                # OPENCV MODE (Sophia): toppings can also be picked with fingers
                 if picking_toppings():
                     if finger_count == 0:
                         waiting_for_reset = False
@@ -635,167 +853,54 @@ async def main():
                         hold_frames = 0
 
                     fingers_text = font.render("Fingers: " + str(finger_count), True, (255, 255, 255))
-                    screen.blit(fingers_text, (20, 520))
-                    pygame.draw.rect(screen, (255, 255, 255), (20, 560, 300, 25), 2)
-                    pygame.draw.rect(screen, (255, 255, 255), (20, 560, int(300 * hold_frames / HOLD_TIME), 25))
+                    screen.blit(fingers_text, (20, 110))
+                    pygame.draw.rect(screen, (255, 255, 255), (20, 150, 300, 25), 2)
+                    pygame.draw.rect(screen, (255, 255, 255), (20, 150, int(300 * hold_frames / HOLD_TIME), 25))
 
                 # TOPPINGS DONE
                 elif customer is not None and not customer_reacting:
                     done_text = font.render("Toppings done! Click SERVE", True, (255, 255, 255))
-                    screen.blit(done_text, (20, 520))
-
-                # SERVE BUTTON
-                pygame.draw.rect(screen, (255, 255, 255), serve_button, 3)
-                serve_text = font.render("SERVE", True, (255, 255, 255))
-                screen.blit(serve_text, serve_text.get_rect(center=serve_button.center))
-
-                #CLEAR BUTTON
-                pygame.draw.rect(screen, (180, 90, 90), clear_button, border_radius=10)
-                pygame.draw.rect(screen, (255, 255, 255), clear_button, 2, border_radius=10)
-                clear_text = font.render("CLEAR", True, (255, 255, 255))
-                screen.blit(clear_text, clear_text.get_rect(center=clear_button.center))
-
-                # DISPLAY SELECTED TOPPINGS
-                selected_text = font.render(
-                    "Selected: " + ", ".join(selected_toppings),
-                    True,
-                    (255, 255, 255)
-                )
-                screen.blit(selected_text, (20, 70))
-
-                # DISPLAY ORDER (TEMPORARY FOR TESTING)
-                if customer is not None:
-                    order_text = font.render(
-                        "Order: " + ", ".join(current_order),
-                        True,
-                        (255, 255, 255)
-                    )
-                    screen.blit(order_text, (20, 120))
-            else:
-                if customer is None and not customer_reacting:
-                    customer_timer += dt
-
-                    if customer_timer >= next_customer_time:
-                        new_customer()
-                        customer_timer = 0
-
-                # CUSTOMER REACTION
-                if customer_reacting:
-                    reaction_timer += dt
-                
-                    if reaction_timer >= 2000:
-                        customer = None
-                        customer_reacting = False
-                        reaction_timer = 0
-                        #new customer wait time
-                        customer_timer = 0
-                        next_customer_time = random.randint(3000, 7000)
-
-                # DRAW CUSTOMER
-                if customer is not None:
-                    customer.draw(screen)
-
-                # DRAW TOPPINGS
-                toppings.update()
-                toppings.draw(screen)
-
-                # SERVE BUTTON
-                pygame.draw.rect(screen, (148, 90, 45), serve_button, 3)
-                serve_text = font.render("SERVE", True, (148, 90, 45))
-                screen.blit(serve_text, serve_text.get_rect(center=serve_button.center))
-
-                # CLEAR BUTTON
-                pygame.draw.rect(screen, (180, 90, 90), clear_button, border_radius=10)
-                pygame.draw.rect(screen, (255, 255, 255), clear_button, 2, border_radius=10)
-                clear_text = font.render("CLEAR DRINK", True, (255, 255, 255))
-                screen.blit(clear_text, clear_text.get_rect(center=clear_button.center))
-
-                # DISPLAY SELECTED TOPPINGS
-                selected_text = font.render(
-                    "Selected: " + ", ".join(selected_toppings),
-                    True,
-                    (255, 255, 255)
-                )
-                screen.blit(selected_text, (20, 70))
-
-                # DISPLAY ORDER (TEMPORARY FOR TESTING)
-                if customer is not None:
-                    order_text = font.render(
-                        "Order: " + ", ".join(current_order),
-                        True,
-                        (255, 255, 255)
-                    )
-                    screen.blit(order_text, (20, 120))
+                    screen.blit(done_text, (20, 110))
 
             # CUSTOMER DIALOGUE (Sophia)
-            # new customer walks up: pick a base and an order line
+            # new customer walks up: show their order line
             if customer is not None and customer is not dialogue_customer:
                 dialogue_customer = customer
-
                 reaction_given = False
                 dialogue_visible = True
+                dialogue_timer = 0
                 dialogue_text = ""
-
                 if customer.name in CUSTOMER_DIALOGUE:
-                    dialogue_text = fill_in_dialogue(
-                        random.choice(
-                            CUSTOMER_DIALOGUE[customer.name]["order"]
-                        )
-                    )
+                    dialogue_text = fill_in_dialogue(random.choice(CUSTOMER_DIALOGUE[customer.name]["order"]))
 
-            # drink was served: switch to a reaction line
-            
+            # drink was served: switch to a reaction line (mood was worked out in serve_drink)
             if customer is not None and customer_reacting and not reaction_given:
                 reaction_given = True
                 dialogue_visible = True
+                dialogue_timer = 0
                 if customer.name in CUSTOMER_DIALOGUE:
-                    # Check whether BOTH base and toppings were correct
-                    correct_toppings = set(selected_toppings) == set(customer.order)
-                    correct_base = selected_base == customer.base
+                    dialogue_text = fill_in_dialogue(random.choice(CUSTOMER_DIALOGUE[customer.name][last_mood]))
 
-                    if correct_toppings and correct_base:
-                        mood = "happy"
-
-                    elif any(name in customer.order for name in selected_toppings) and correct_base:
-                        mood = "meh"
-
-                    else:
-                        mood = "angry"
-
-                    dialogue_text = fill_in_dialogue(
-                        random.choice(CUSTOMER_DIALOGUE[customer.name][mood])
-                    )
-
-
-            # customer left
+            # customer left: the box fades out, then the text is cleared
             if customer is None:
-                dialogue_text = ""
-                dialogue_visible = True
+                dialogue_visible = False
+                if dialogue_fade < 0.02:
+                    dialogue_text = ""
 
-            # DRAW DIALOGUE
-            if dialogue_text != "" and dialogue_visible:
-                screen.blit(
-                    pygame.transform.smoothscale(dialogue_image, dialogue_box.size),
-                    dialogue_box
-                )
+            # DRAW DIALOGUE (fades in and out smoothly)
+            dialogue_timer += dt
+            fade_target = 1 if (dialogue_visible and dialogue_text != "") else 0
+            dialogue_fade += (fade_target - dialogue_fade) * 0.15
+            if dialogue_text != "" and dialogue_fade > 0.02:
+                draw_dialogue()
 
-                y = dialogue_box.top + 30
-                for line in wrap_text(dialogue_text, dialogue_font, dialogue_box.width - 100):
-                    line_surface = dialogue_font.render(line, True, (0, 0, 0))
-                    screen.blit(line_surface, (dialogue_box.left + 40, y))
-                    y += dialogue_font.get_linesize()
+            # RECEIPT (Sophia): shows after you close the dialogue
+            if customer is not None and not customer_reacting and not dialogue_visible:
+                draw_receipt()
 
-                    # CLOSE BUTTON
-                pygame.draw.rect(screen, (180, 90, 90), dialogue_close_button, border_radius=8)
-                pygame.draw.rect(screen, (255, 255, 255), dialogue_close_button, 2, border_radius=8)
-                close_text = font.render("X", True, (255, 255, 255))
-                screen.blit(close_text, close_text.get_rect(center=dialogue_close_button.center))
-
-            money_text = font.render(f"Money: ${money}", True, (148, 90, 45))
-            screen.blit(money_text, (20, 20))
-
-            # WHEN ADDING MORE TOPPINGS:
-            # toppings.add(Topping("assets/toppings/example.png", 700, 300, "example", 20))
+            # MONEY (Sophia)
+            money_popup_timer += dt
+            draw_money()
 
         pygame.display.flip()
         clock.tick(60)
