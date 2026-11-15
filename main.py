@@ -211,7 +211,7 @@ async def main():
 
     toppings = pygame.sprite.Group()
 
-    available_toppings = ['''add stuff here''']
+    available_toppings = ['''add three here''']
     selected_toppings = []
     current_order = []
     customer = None
@@ -389,6 +389,8 @@ async def main():
                     if reaction_timer >= 2000:
                         customer = None
                         customer_reacting = False
+                        reaction_timer = 0
+                        #new customer wait time
                         customer_timer = 0
                         next_customer_time = random.randint(3000, 7000)
 
@@ -455,10 +457,12 @@ async def main():
                 # CUSTOMER REACTION
                 if customer_reacting:
                     reaction_timer += dt
-
+                
                     if reaction_timer >= 2000:
                         customer = None
                         customer_reacting = False
+                        reaction_timer = 0
+                        #new customer wait time
                         customer_timer = 0
                         next_customer_time = random.randint(3000, 7000)
 
