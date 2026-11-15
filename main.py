@@ -127,6 +127,9 @@ async def main():
     customer_reacting = False
     reaction_timer = 0
 
+    cutscene = [pygame.image.load("assets/ui/cutscene_frame1.png"), pygame.image.load("assets/ui/cutscene_frame2.png")]
+    cutscene_index = 0
+    
     tutorial_text = []
 
     serve_button = pygame.Rect(1000, 600, 200, 70)
@@ -146,6 +149,10 @@ async def main():
                     status = "tutorial"
                 elif event.key == K_RETURN and status == "tutorial":
                     status = "game"
+                elif event.key == K_SPACE and status == "tutorial":
+                    if event.key == K_SPACE and status == "tutorial":
+                        if cutscene_index < len(cutscene) - 1:
+                            cutscene_index += 1
             elif event.type == MOUSEBUTTONDOWN:
                 if status == "mode_select":
                     if browser_button.collidepoint(event.pos):
@@ -201,7 +208,7 @@ async def main():
             #screen.blit(title_image,(0,0))
             pass
         elif status == "tutorial":
-            pass
+            screen.blit(cutscene[cutscene_index], (0, 0))
         elif status == "game":
             if use_camera:
                 # OPENCV MODE (Sophia): webcam controls for toppings here
