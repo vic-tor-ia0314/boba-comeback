@@ -384,7 +384,7 @@ async def main():
             "order": ["HI CHAT CAN I GET A {base} WITH SOME {toppings} PLSPSLPSSPLS!!!!"],
             "happy": ["I LOVE THIS DRINK AND I LOVE YOUUUUUUU BYEEE"],
             "meh": ["Hmm, I think you made it wrong... that's okay ig."],
-            "angry": ["Bro. Are u fr. I'm allergic to {base}"],
+            "angry": ["Bro. Are u fr. I'm allergic to ts"],
         },
         "redpanda": {
             "order": ["I'm hungry. Can I have a 67 ({base}) with some skibidi rizz ({toppings})"],
