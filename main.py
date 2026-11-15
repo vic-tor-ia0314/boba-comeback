@@ -224,6 +224,10 @@ async def main():
 
     cutscene = [pygame.image.load("assets/ui/cutscene_frame1.png"), pygame.image.load("assets/ui/cutscene_frame2.png")]
     cutscene_index = 0
+
+    # MAIN SCREEN BACKGROUND (Sophia)
+    main_screen = pygame.transform.scale(pygame.image.load("assets/ui/main_screen.jpg").convert(), (SCREEN_WIDTH, SCREEN_HEIGHT))
+    camera_image = None
     
     tutorial_text = []
 
@@ -251,7 +255,7 @@ async def main():
         },
         "chiikawa": {
             "order": ["Hmph! I-it's not like I wanted a {base} with {toppings} or anything! And I definitely didn't come here just to see you... b-baka!"],
-            "happy": ["Wow you made it right... but it wasn't for me, s-so I don't care or anything!!!! H-hmph~"],
+            "happy": ["Wow you made it right... but it's not like it was for me, s-so I don't care or anything!!!! H-hmph~"],
             "meh": ["Th-this is kind of close... b-but don't think I'm impressed or anything! Hmph."],
             "angry": ["b-baka! What the hell's wrong with you! Can't even make a simple drink..!"],
         },
@@ -363,6 +367,12 @@ async def main():
         elif status == "tutorial":
             screen.blit(cutscene[cutscene_index], (0, 0))
         elif status == "game":
+            # MAIN SCREEN BACKGROUND (Sophia)
+            screen.blit(main_screen, (0, 0))
+            if use_camera and camera_image is not None:
+                # small webcam preview so players can still see their hands
+                screen.blit(pygame.transform.scale(camera_image, (320, 240)), (SCREEN_WIDTH - 330, 10))
+
             if use_camera:
                 # OPENCV MODE (Sophia): same as clicking mode, but toppings are picked with fingers
                 if customer is None and not customer_reacting:
@@ -465,8 +475,8 @@ async def main():
                 toppings.draw(screen)
 
                 # SERVE BUTTON
-                pygame.draw.rect(screen, (255, 255, 255), serve_button, 3)
-                serve_text = font.render("SERVE", True, (255, 255, 255))
+                pygame.draw.rect(screen, (148, 90, 45), serve_button, 3)
+                serve_text = font.render("SERVE", True, (148, 90, 45))
                 screen.blit(serve_text, serve_text.get_rect(center=serve_button.center))
 
                 # DISPLAY SELECTED TOPPINGS
@@ -509,7 +519,7 @@ async def main():
 
             # DRAW DIALOGUE
             if dialogue_text != "":
-                pygame.draw.rect(screen, (255, 255, 255), dialogue_box)
+                pygame.draw.rect(screen, (148, 90, 45), dialogue_box)
                 pygame.draw.rect(screen, (80, 80, 80), dialogue_box, 3)
                 y = dialogue_box.top + 15
                 for line in wrap_text(dialogue_text, dialogue_font, dialogue_box.width - 30):
@@ -517,7 +527,7 @@ async def main():
                     screen.blit(line_surface, (dialogue_box.left + 15, y))
                     y += 28
 
-            money_text = font.render(f"Money: ${money}", True, (255, 255, 255))
+            money_text = font.render(f"Money: ${money}", True, (148, 90, 45))
             screen.blit(money_text, (20, 20))
 
             # WHEN ADDING MORE TOPPINGS:
