@@ -131,9 +131,10 @@ async def main():
         return total
 
     def draw_hand_preview(preview=None, show_info=True):
-        # webcam preview (top right by default) with the tracked hands drawn on top
+        # webcam preview (left side, under the money, by default) with the tracked hands drawn on top
+        # kept on the left so it never covers the cups, the C note or the tea jars on the right
         if preview is None:
-            preview = pygame.Rect(SCREEN_WIDTH - 340, 16, 320, 240)
+            preview = pygame.Rect(20, 104, 256, 192)
         pygame.draw.rect(screen, (148, 90, 45), preview.inflate(10, 10), border_radius=12)
         screen.blit(pygame.transform.scale(camera_image, preview.size), preview)
         scale_x = preview.width / camera_size[0]
@@ -159,7 +160,7 @@ async def main():
             return
 
         # what the number picks + hold progress bar, under the preview
-        info = pygame.Rect(preview.left - 5, preview.bottom + 10, preview.width + 10, 64)
+        info = pygame.Rect(preview.left - 5, preview.bottom + 12, 430, 60)
         pygame.draw.rect(screen, (255, 250, 238), info, border_radius=10)
         pygame.draw.rect(screen, (148, 90, 45), info, 3, border_radius=10)
         if picking_toppings():
@@ -175,7 +176,7 @@ async def main():
             text = "toppings done! serve [S]"
         else:
             text = "waiting for a customer..."
-        label = key_font.render(text, True, (110, 62, 30))
+        label = tag_font.render(text, True, (110, 62, 30))
         screen.blit(label, label.get_rect(midtop=(info.centerx, info.top + 8)))
         bar = pygame.Rect(info.left + 14, info.bottom - 22, info.width - 28, 12)
         pygame.draw.rect(screen, (230, 215, 190), bar, border_radius=6)
@@ -219,9 +220,11 @@ async def main():
         # happy = right base + right toppings in the right order
         # meh   = right base, but toppings in the wrong order (or only some toppings right)
         # angry = wrong base, or none of the toppings right
+        # ice: getting ice wrong turns a perfect drink into "meh"
         correct_base = selected_base == current_base
+        correct_ice = ice_added == current_ice
         if correct_base and selected_toppings == current_order:
-            return "happy"
+            return "happy" if correct_ice else "meh"
         if correct_base and set(selected_toppings) == set(current_order):
             return "meh"
         if correct_base and any(name in current_order for name in selected_toppings):
@@ -234,9 +237,9 @@ async def main():
 
     def serve_drink():
         # MONEY ONLY CHANGES HERE: happy = full price, meh = half, angry = you lose half (wasted ingredients)
-        nonlocal money, customer_reacting, reaction_timer, last_mood, money_popup_text, money_popup_timer, status
+        nonlocal money, customer_reacting, reaction_timer, last_mood, money_popup_text, money_popup_timer
         nonlocal cup_shown, selected_base, served_base, served_toppings, served_timer
-        nonlocal won
+        nonlocal ice_added, served_ice
         last_mood = get_mood()
         total = order_total()
         if last_mood == "happy":
@@ -247,8 +250,6 @@ async def main():
         else:
             change = -(total // 2)
         money += change
-        if money >= 100:
-            won = True
         money_popup_text = ("+$" if change >= 0 else "-$") + str(abs(change))
         money_popup_timer = 0
         customer.image = CUSTOMERS[customer.name].get(last_mood, CUSTOMERS[customer.name]["default"])
@@ -257,10 +258,12 @@ async def main():
         # the drink is handed over: it leaves the counter, press C for a new cup
         served_base = selected_base
         served_toppings = list(selected_toppings)
+        served_ice = ice_added
         served_timer = 0
         cup_shown = False
         selected_base = None
         selected_toppings.clear()
+        ice_added = False
 
     def draw_ui_button(name, rect, text, key_text, fill, text_colour, mouse_pos):
         # rounded button with a drop shadow, lifts and brightens a little on hover
@@ -346,7 +349,7 @@ async def main():
         t -= 2.625 / 2.75
         return 7.5625 * t * t + 0.984375
 
-    def draw_cup(base, cup_toppings, bottom_middle, size, alpha):
+    def draw_cup(base, cup_toppings, bottom_middle, size, alpha, ice=False):
         # one cup with its base and toppings, plus a soft shadow so it stands out from the board
         picture = cup_image if base is None else BASES[base]["image"]
         width = max(1, int(picture.get_width() * size))
@@ -362,10 +365,40 @@ async def main():
                 t = (pygame.time.get_ticks() - topping_drop_start[name]) / 600
                 drop = int((1 - ease_out_bounce(t)) * 110)
             layers.append((TOPPINGS[name]["image"], drop))
+        if ice:
+            # ice drops in last, on top, with the same bounce
+            t = (pygame.time.get_ticks() - ice_drop_start) / 600
+            layers.append((ice_image, int((1 - ease_out_bounce(t)) * 110)))
         for image, drop in layers:
             scaled = pygame.transform.smoothscale(image, (max(1, int(image.get_width() * size)), max(1, int(image.get_height() * size))))
             scaled.set_alpha(alpha)
             screen.blit(scaled, scaled.get_rect(midbottom=(bottom_middle[0], bottom_middle[1] - drop)))
+
+    def get_cup():
+        # C key or clicking the cup stacks
+        nonlocal cup_shown, cup_timer
+        if not cup_shown:
+            cup_shown = True
+            cup_timer = 0
+
+    def toggle_ice():
+        # I key or clicking the ice bucket: adds ice, or takes it back out if it's already in
+        nonlocal ice_added, ice_drop_start
+        if cup_shown:
+            ice_added = not ice_added
+            ice_drop_start = pygame.time.get_ticks()
+
+    def draw_counter_highlight(zone, text, mouse_pos):
+        # same soft highlight as the base jars, with the name + key above
+        if zone.collidepoint(mouse_pos):
+            highlight = pygame.Surface(zone.size, pygame.SRCALPHA)
+            pygame.draw.rect(highlight, (255, 255, 255, 70), highlight.get_rect(), border_radius=14)
+            screen.blit(highlight, zone)
+            pygame.draw.rect(screen, (148, 90, 45), zone, 3, border_radius=14)
+            label = tag_font.render(text, True, (255, 250, 238))
+            tag = label.get_rect(midbottom=(zone.centerx, zone.top - 8)).inflate(16, 8)
+            pygame.draw.rect(screen, (148, 90, 45), tag, border_radius=8)
+            screen.blit(label, label.get_rect(center=tag.center))
 
     def dialogue_done_typing():
         return dialogue_timer * TYPE_SPEED >= len(dialogue_text)
@@ -431,6 +464,8 @@ async def main():
                 lines.append((str(number) + ". " + TOPPING_NAMES[name], False))
         else:
             lines.append(("none", False))
+        lines.append(("------- Ice -------", True))
+        lines.append(("with ice" if current_ice else "no ice", False))
         lines.append(("------ Total ------", True))
         lines.append(("$" + str(order_total()), False))
         line_height = receipt_font.get_linesize()
@@ -488,7 +523,7 @@ async def main():
         label.set_alpha(alpha)
         screen.blit(label, label.get_rect(center=(rect.centerx - 4, rect.centery - 4)))
 
-    # STORY FLOW cutscene frames -> tutorial -> game
+    # STORY FLOW (Sophia): cutscene frames -> tutorial (placeholder) -> game
     def next_story_screen():
         nonlocal status, cutscene_index
         if status == "tutorial":
@@ -518,10 +553,11 @@ async def main():
         return random.sample(available_toppings, number)    # the order of this list matters
 
     def new_customer():
-        nonlocal customer, current_order, current_base, selected_base
+        nonlocal customer, current_order, current_base, selected_base, current_ice
 
         name = random.choice(list(CUSTOMERS.keys()))
         current_base = random.choice(list(BASES.keys()))
+        current_ice = random.choice([True, False])     # ICE (Sophia): with ice or no ice
         selected_base = None
         current_order = generate_order()
         customer = Customer(name, current_order, current_base)
@@ -559,8 +595,9 @@ async def main():
             print("New topping unlocked:", new_topping)
 
     def clear_drink():
-        nonlocal selected_base, cup_timer
+        nonlocal selected_base, cup_timer, ice_added
         selected_base = None
+        ice_added = False
         selected_toppings.clear()
         cup_timer = 350
 
@@ -631,7 +668,7 @@ async def main():
     customer_reacting = False
     reaction_timer = 0
 
-    cutscene = [pygame.image.load("assets/ui/cutscene_frame1.png"), pygame.image.load("assets/ui/cutscene_frame2.png"), pygame.image.load("assets/ui/cutscene_frame3.png")]
+    cutscene = [pygame.image.load("assets/ui/cutscene_frame1.png"), pygame.image.load("assets/ui/cutscene_frame2.png")]
     cutscene_index = 0
 
     # MAIN SCREEN BACKGROUND (Sophia)
@@ -668,6 +705,19 @@ async def main():
         "milktea": pygame.Rect(1170, 430, 105, 160),   # brown jar
     }
     selected_base = None     # None = empty cup
+
+    # ICE (Sophia): customers ask for ice or no ice
+    ice_image = pygame.image.load("assets/ice.png").convert_alpha()
+    ice_added = False        # is there ice in the cup right now
+    current_ice = False      # does the customer want ice
+    served_ice = False
+    ice_drop_start = 0
+    ICE_LINES = ["With ice, please!", "Oh, and lots of ice!", "Ice please!"]
+    NO_ICE_LINES = ["No ice, please!", "Oh, and no ice!", "Hold the ice!"]
+
+    # CUPS + ICE BUTTONS (Sophia): click the cup stacks or the ice bucket (same as C / I)
+    CUP_STACK_ZONE = pygame.Rect(920, 318, 150, 132)
+    ICE_ZONE = pygame.Rect(725, 400, 158, 150)
 
     # TOPPING BUTTONS (Sophia): the 4 x 2 jars on the left of the background
     TOPPING_ZONES = {
@@ -768,8 +818,6 @@ async def main():
     serve_button = pygame.Rect(980, 600, 200, 70)
     clear_button = pygame.Rect(760, 600, 200, 70)
 
-    won = False
-
     running = True
 
     while running:
@@ -801,8 +849,10 @@ async def main():
                     clear_drink()
                 elif event.key == K_c and status == "game":
                     # EMPTY CUP (Sophia)
-                    cup_shown = True
-                    cup_timer = 0
+                    get_cup()
+                elif event.key == K_i and status == "game" and customer is not None and not customer_reacting:
+                    # ICE (Sophia)
+                    toggle_ice()
             elif event.type == MOUSEBUTTONDOWN:
                 if status == "mode_select":
                     if browser_button.collidepoint(event.pos):
@@ -827,12 +877,17 @@ async def main():
                             dialogue_visible = False
                         else:
                             advance_dialogue()
+                    elif CUP_STACK_ZONE.collidepoint(event.pos):
+                        # cups can be grabbed any time, like the C key
+                        get_cup()
                     elif customer is not None and not customer_reacting:
                         if serve_button.collidepoint(event.pos):
                             serve_drink()
                         elif clear_button.collidepoint(event.pos):
                             if cup_shown:
                                 clear_drink()
+                        elif ICE_ZONE.collidepoint(event.pos):
+                            toggle_ice()
                         elif cup_shown:
                             # BASES: click a jar to fill the cup
                             for base_name, zone in BASE_ZONES.items():
@@ -942,12 +997,8 @@ async def main():
                     customer = None
                     customer_reacting = False
                     reaction_timer = 0
-
-                    if won:
-                        status = "end"
-                    else:
-                        customer_timer = 0
-                        next_customer_time = random.randint(3000, 7000)
+                    customer_timer = 0
+                    next_customer_time = random.randint(3000, 7000)
 
             # DRAW CUSTOMER
             if customer is not None:
@@ -957,13 +1008,13 @@ async def main():
             if cup_shown:
                 cup_timer += dt
                 size = max(0.01, ease_out_back(cup_timer / 350)) * CUP_SCALE
-                draw_cup(selected_base, selected_toppings, CUP_POS, size, 255)
+                draw_cup(selected_base, selected_toppings, CUP_POS, size, 255, ice_added)
 
             # SERVED DRINK: slides up toward the customer and fades out
             served_timer += dt
             if served_timer < 450:
                 t = served_timer / 450
-                draw_cup(served_base, served_toppings, (CUP_POS[0], CUP_POS[1] - int(t * 120)), CUP_SCALE, int(255 * (1 - t)))
+                draw_cup(served_base, served_toppings, (CUP_POS[0], CUP_POS[1] - int(t * 120)), CUP_SCALE, int(255 * (1 - t)), served_ice)
 
             # BASES (Sophia): hover highlight on the jars (temporary look)
             mouse_pos = pygame.mouse.get_pos()
@@ -976,11 +1027,20 @@ async def main():
                     base_label = font.render(base_name, True, (148, 90, 45))
                     screen.blit(base_label, base_label.get_rect(midbottom=(zone.centerx, zone.top - 4)))
 
+            # CUPS + ICE (Sophia): clickable, same as C and I
+            draw_counter_highlight(CUP_STACK_ZONE, "cups [C]", mouse_pos)
+            draw_counter_highlight(ICE_ZONE, ("remove ice [I]" if ice_added else "ice [I]"), mouse_pos)
+
             # TOPPING BUTTONS (Sophia)
             draw_topping_buttons(mouse_pos)
 
             # KEY HINTS (Sophia)
             for letter, pos in KEY_HINTS.items():
+                # hide the floating note while its thing is hovered (the hover tag shows the key instead)
+                if letter == "C" and CUP_STACK_ZONE.collidepoint(mouse_pos):
+                    continue
+                if letter == "I" and ICE_ZONE.collidepoint(mouse_pos):
+                    continue
                 draw_key_hint(letter, pos)
 
             # SERVE + CLEAR BUTTONS
@@ -1023,6 +1083,7 @@ async def main():
                 dialogue_text = ""
                 if customer.name in CUSTOMER_DIALOGUE:
                     dialogue_text = fill_in_dialogue(random.choice(CUSTOMER_DIALOGUE[customer.name]["order"]))
+                    dialogue_text += " " + random.choice(ICE_LINES if current_ice else NO_ICE_LINES)
 
             # drink was served: switch to a reaction line (mood was worked out in serve_drink)
             if customer is not None and customer_reacting and not reaction_given:
@@ -1055,26 +1116,6 @@ async def main():
             if abs(money - displayed_money) < 0.5:
                 displayed_money = money
             draw_money()
-        
-        elif status == "end":
-            # END SCREEN
-            screen.blit(main_screen, (0, 0))
-
-            # Dark overlay
-            overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-            overlay.fill((30, 25, 20, 180))
-            screen.blit(overlay, (0, 0))
-
-            # Victory message
-            win_title = button_font.render("YOU DID IT!", True, (255, 240, 190))
-            win_text = font.render("You earned $100!", True, (255, 255, 255))
-            money_text = button_font.render("$" + str(money), True, (180, 220, 150))
-            exit_text = font.render("Press ESC to quit", True, (255, 255, 255))
-
-            screen.blit(win_title, win_title.get_rect(center=(640, 230)))
-            screen.blit(win_text, win_text.get_rect(center=(640, 330)))
-            screen.blit(money_text, money_text.get_rect(center=(640, 420)))
-            screen.blit(exit_text, exit_text.get_rect(center=(640, 550)))
 
         # SCREEN TRANSITIONS: old screen fades out over the new one
         if transition_snapshot is not None:
