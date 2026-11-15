@@ -124,6 +124,7 @@ async def main():
         # adds a topping to the cup (in the order you pick them), max 3, only unlocked ones
         if name in available_toppings and name not in selected_toppings and len(selected_toppings) < 3:
             selected_toppings.append(name)
+            topping_drop_start[name] = pygame.time.get_ticks()   # starts the drop-in bounce
 
     def add_topping_by_hand(name):
         add_topping(name)
@@ -194,6 +195,28 @@ async def main():
         selected_base = None
         selected_toppings.clear()
 
+    def draw_ui_button(name, rect, text, key_text, fill, text_colour, mouse_pos):
+        # rounded button with a drop shadow, lifts and brightens a little on hover
+        target = 1 if rect.collidepoint(mouse_pos) else 0
+        button_hover[name] = button_hover.get(name, 0) + (target - button_hover.get(name, 0)) * 0.2
+        lift = int(button_hover[name] * 4)
+        shadow = rect.move(0, 6)
+        darker = (max(0, fill[0] - 55), max(0, fill[1] - 55), max(0, fill[2] - 55))
+        pygame.draw.rect(screen, darker, shadow, border_radius=14)
+        face = rect.move(0, -lift)
+        lighter = tuple(min(255, int(c + (255 - c) * 0.15 * button_hover[name])) for c in fill)
+        pygame.draw.rect(screen, lighter, face, border_radius=14)
+        pygame.draw.rect(screen, darker, face, 3, border_radius=14)
+        # thin highlight along the top edge
+        pygame.draw.line(screen, tuple(min(255, c + 45) for c in lighter), (face.left + 14, face.top + 5), (face.right - 14, face.top + 5), 2)
+        label = font.render(text, True, text_colour)
+        key_label = key_font.render(key_text, True, text_colour)
+        key_label.set_alpha(190)
+        total_width = label.get_width() + 8 + key_label.get_width()
+        x = face.centerx - total_width // 2
+        screen.blit(label, label.get_rect(midleft=(x, face.centery)))
+        screen.blit(key_label, key_label.get_rect(midleft=(x + label.get_width() + 8, face.centery + 2)))
+
     def draw_money():
         # big sage-green money box in the top left
         panel = pygame.Rect(20, 16, 250, 76)
@@ -203,8 +226,9 @@ async def main():
         pygame.draw.rect(screen, SAGE, sign_box, border_radius=10)
         sign = money_font.render("$", True, (245, 240, 225))
         screen.blit(sign, sign.get_rect(center=sign_box.center))
-        amount_colour = SAGE if money >= 0 else (150, 60, 50)
-        amount = money_font.render(str(money), True, amount_colour)
+        shown = int(round(displayed_money))      # counts up/down smoothly toward the real money
+        amount_colour = SAGE if shown >= 0 else (150, 60, 50)
+        amount = money_font.render(str(shown), True, amount_colour)
         screen.blit(amount, amount.get_rect(midleft=(sign_box.right + 14, panel.centery)))
         # +$ / -$ floats up and fades after serving
         if money_popup_text != "" and money_popup_timer < 1300:
@@ -241,6 +265,20 @@ async def main():
             label.set_alpha(int(255 * amount))
             screen.blit(label, label.get_rect(center=tag.center))
 
+    def ease_out_bounce(t):
+        # falls and bounces a couple of times before settling (like a ball landing)
+        t = max(0, min(1, t))
+        if t < 1 / 2.75:
+            return 7.5625 * t * t
+        elif t < 2 / 2.75:
+            t -= 1.5 / 2.75
+            return 7.5625 * t * t + 0.75
+        elif t < 2.5 / 2.75:
+            t -= 2.25 / 2.75
+            return 7.5625 * t * t + 0.9375
+        t -= 2.625 / 2.75
+        return 7.5625 * t * t + 0.984375
+
     def draw_cup(base, cup_toppings, bottom_middle, size, alpha):
         # one cup with its base and toppings, plus a soft shadow so it stands out from the board
         picture = cup_image if base is None else BASES[base]["image"]
@@ -249,11 +287,18 @@ async def main():
         shadow = pygame.Surface((int(width * 0.9) + 2, 22), pygame.SRCALPHA)
         pygame.draw.ellipse(shadow, (60, 35, 20, int(70 * alpha / 255)), shadow.get_rect())
         screen.blit(shadow, shadow.get_rect(center=(bottom_middle[0], bottom_middle[1] - 2)))
-        layers = [picture] + [TOPPINGS[name]["image"] for name in cup_toppings]
-        for image in layers:
+        layers = [(picture, 0)]
+        for name in cup_toppings:
+            # a topping that was just added drops in from above and bounces into place
+            drop = 0
+            if name in topping_drop_start:
+                t = (pygame.time.get_ticks() - topping_drop_start[name]) / 600
+                drop = int((1 - ease_out_bounce(t)) * 110)
+            layers.append((TOPPINGS[name]["image"], drop))
+        for image, drop in layers:
             scaled = pygame.transform.smoothscale(image, (max(1, int(image.get_width() * size)), max(1, int(image.get_height() * size))))
             scaled.set_alpha(alpha)
-            screen.blit(scaled, scaled.get_rect(midbottom=bottom_middle))
+            screen.blit(scaled, scaled.get_rect(midbottom=(bottom_middle[0], bottom_middle[1] - drop)))
 
     def dialogue_done_typing():
         return dialogue_timer * TYPE_SPEED >= len(dialogue_text)
@@ -456,7 +501,7 @@ async def main():
                 self.order = order
                 self.base = base
                 self.image = CUSTOMERS[name]["default"]
-                self.rect = self.image.get_rect(center=(850, 180))
+                self.rect = self.image.get_rect(center=(850, 150))
                 self.spawn_time = pygame.time.get_ticks() 
     
             def check_order(self, selected_toppings, selected_base):
@@ -579,6 +624,14 @@ async def main():
     SAGE = (78, 104, 72)
     money_font = pygame.font.Font(FONT_PATH, 56)
     money_popup_text = ""
+    displayed_money = 0      # the number on screen, slides toward money
+    button_hover = {}        # hover animation for the custom buttons
+    key_font = pygame.font.Font(FONT_PATH, 26)
+    topping_drop_start = {}  # topping name -> time it was dropped in (for the bounce)
+    # SCREEN TRANSITIONS (Sophia): crossfade whenever the screen changes
+    last_screen = None
+    transition_snapshot = None
+    transition_timer = 0
     money_popup_timer = 0
     last_mood = "happy"
 
@@ -664,6 +717,17 @@ async def main():
                 elif (event.key == K_RETURN or event.key == K_SPACE) and status == "game" and dialogue_text != "" and dialogue_visible:
                     # DIALOGUE: Enter finishes the text / closes it
                     advance_dialogue()
+                elif event.key == K_1 and status == "mode_select":
+                    status = "title"
+                elif event.key == K_2 and status == "mode_select":
+                    start_camera()
+                    status = "title"
+                elif event.key == K_s and status == "game" and not dialogue_visible and customer is not None and not customer_reacting:
+                    # SERVE [S]
+                    serve_drink()
+                elif event.key == K_r and status == "game" and cup_shown and customer is not None and not customer_reacting:
+                    # CLEAR [R]
+                    clear_drink()
                 elif event.key == K_c and status == "game":
                     # EMPTY CUP (Sophia)
                     cup_shown = True
@@ -708,8 +772,12 @@ async def main():
                                 if zone.collidepoint(event.pos):
                                     add_topping(topping_name)
 
-        screen.fill((0, 0, 0))
-
+        # SCREEN TRANSITIONS: the screen still shows last frame here, so keep a copy to fade out
+        if (status, cutscene_index) != last_screen:
+            if last_screen is not None:
+                transition_snapshot = screen.copy()
+                transition_timer = 0
+            last_screen = (status, cutscene_index)
 
         screen.fill((0, 0, 0))
 
@@ -724,12 +792,15 @@ async def main():
                 screen.blit(camera_image, (0, 0))
 
         if status == "mode_select":
-            pygame.draw.rect(screen, (255, 255, 255), browser_button, 3)
-            pygame.draw.rect(screen, (255, 255, 255), download_button, 3)
-            browser_text = font.render("Browser version", True, (255, 255, 255))
-            download_text = font.render("Downloaded version", True, (255, 255, 255))
-            screen.blit(browser_text, browser_text.get_rect(center=browser_button.center))
-            screen.blit(download_text, download_text.get_rect(center=download_button.center))
+            screen.blit(main_screen, (0, 0))
+            dim = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            dim.fill((40, 25, 15, 120))
+            screen.blit(dim, (0, 0))
+            pick_text = money_font.render("How are you playing?", True, (255, 244, 220))
+            screen.blit(pick_text, pick_text.get_rect(center=(640, 220)))
+            mouse_pos = pygame.mouse.get_pos()
+            draw_ui_button("browser", browser_button, "Browser version", "[1]", (245, 228, 196), (110, 62, 30), mouse_pos)
+            draw_ui_button("download", download_button, "Downloaded version", "[2]", (245, 228, 196), (110, 62, 30), mouse_pos)
         elif status == "title":
             # TITLE SCREEN
             title_timer += dt
@@ -823,16 +894,9 @@ async def main():
             for letter, pos in KEY_HINTS.items():
                 draw_key_hint(letter, pos)
 
-            # SERVE BUTTON
-            pygame.draw.rect(screen, (148, 90, 45), serve_button, 3)
-            serve_text = font.render("SERVE", True, (148, 90, 45))
-            screen.blit(serve_text, serve_text.get_rect(center=serve_button.center))
-
-            # CLEAR BUTTON
-            pygame.draw.rect(screen, (180, 90, 90), clear_button, border_radius=10)
-            pygame.draw.rect(screen, (255, 255, 255), clear_button, 2, border_radius=10)
-            clear_text = font.render("CLEAR", True, (255, 255, 255))
-            screen.blit(clear_text, clear_text.get_rect(center=clear_button.center))
+            # SERVE + CLEAR BUTTONS
+            draw_ui_button("serve", serve_button, "SERVE", "[S]", (122, 150, 112), (255, 248, 235), mouse_pos)
+            draw_ui_button("clear", clear_button, "CLEAR", "[R]", (214, 128, 112), (255, 248, 235), mouse_pos)
 
             if use_camera:
                 # OPENCV MODE (Sophia): toppings can also be picked with fingers
@@ -900,7 +964,20 @@ async def main():
 
             # MONEY (Sophia)
             money_popup_timer += dt
+            displayed_money += (money - displayed_money) * 0.08
+            if abs(money - displayed_money) < 0.5:
+                displayed_money = money
             draw_money()
+
+        # SCREEN TRANSITIONS: old screen fades out over the new one
+        if transition_snapshot is not None:
+            transition_timer += dt
+            fade = 1 - transition_timer / 450
+            if fade <= 0:
+                transition_snapshot = None
+            else:
+                transition_snapshot.set_alpha(int(255 * fade))
+                screen.blit(transition_snapshot, (0, 0))
 
         pygame.display.flip()
         clock.tick(60)
