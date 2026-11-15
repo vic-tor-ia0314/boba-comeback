@@ -2,6 +2,7 @@ import pygame
 from pygame import *
 import asyncio
 import random
+import math
 
 try:
     import cv2
@@ -26,15 +27,24 @@ async def main():
         "peppapig":{"default":pygame.image.load("assets/characters/peppapig_default.png"), "angry":pygame.image.load("assets/characters/peppapig_angry.png"), "happy":pygame.image.load("assets/characters/peppapig_happy.png")},
         "redpanda":{"default":pygame.image.load("assets/characters/redpanda_default.png"), "angry":pygame.image.load("assets/characters/redpanda_angry.png"), "happy":pygame.image.load("assets/characters/redpanda_happy.png")},
     }
+
+    cup_image = pygame.image.load("assets/emptycup.png").convert_alpha()
+
+    BASES = {
+        "milktea": {"image": pygame.image.load("assets/bases/milktea.png"), "value": 5},
+        "matcha": {"image": pygame.image.load("assets/bases/matcha.png"), "value": 10},
+        "taro": {"image": pygame.image.load("assets/bases/taro.png"), "value": 5}
+    }
+
     TOPPINGS = {
-        "pearls": {"image": pygame.image.load("assets/toppings/pearls.png"), "value": 10},
-        "grassjelly": {"image": pygame.image.load("assets/toppings/grass_jelly.png"), "value": 15},
-        "coconut":{"image": pygame.image.load("assets/toppings/coconut.png"), "value": 10},
-        "strawberryboba":{"image": pygame.image.load("assets/toppings/strawberryboba.png"), "value": 10},
-        "mangoboba":{"image": pygame.image.load("assets/toppings/mangoboba.png"), "value": 10},
-        "strawberrychunk":{"image": pygame.image.load("assets/toppings/strawberry.png"), "value": 20},
-        "mangochunk":{"image": pygame.image.load("assets/toppings/mango.png"), "value": 20},
-        "redbean":{"image": pygame.image.load("assets/toppings/redbean.png"), "value": 20}
+        #"pearls": {"image": pygame.image.load("assets/toppings/pearls.png"), "value": 10},
+        #"grassjelly": {"image": pygame.image.load("assets/toppings/grass_jelly.png"), "value": 15},
+        #"coconut":{"image": pygame.image.load("assets/toppings/coconut.png"), "value": 10},
+        #"strawberryboba":{"image": pygame.image.load("assets/toppings/strawberryboba.png"), "value": 10},
+        #"mangoboba":{"image": pygame.image.load("assets/toppings/mangoboba.png"), "value": 10},
+        #"strawberrychunk":{"image": pygame.image.load("assets/toppings/strawberry.png"), "value": 20},
+        #"mangochunk":{"image": pygame.image.load("assets/toppings/mango.png"), "value": 20},
+        #"redbean":{"image": pygame.image.load("assets/toppings/redbean.png"), "value": 20}
     }
 
     print("CV_ON:", CV_ON)
@@ -52,8 +62,8 @@ async def main():
     waiting_for_reset = False
 
     # finger number -> topping. Names must match the keys in TOPPINGS
-    HAND_TOPPINGS = ["pearls", "grass jelly", "coconut jelly", "strawberry boba",
-                     "mango boba", "mango chunks", "strawberry chunks", "red bean"]
+    HAND_TOPPINGS = ["pearls", "grassjelly", "coconut", "strawberryboba",
+                     "mangoboba", "mangochunk", "strawberrychunk", "redbean"]
 
     # DEFAULT FONT (Sophia): falls back to pygame's font if the file is missing
     FONT_PATH = "assets/VT323-Regular.ttf"
@@ -123,8 +133,8 @@ async def main():
 
     # CUSTOMER DIALOGUE (Sophia)
     def fill_in_dialogue(line):
-        toppings_text = " and ".join(current_order)
-        return line.format(base=current_base, toppings=toppings_text, topping=toppings_text)
+        toppings_text = " and ".join(current_order) if current_order else "no toppings"
+        return line.format(base=BASE_NAMES.get(current_base, current_base), toppings=toppings_text, topping=toppings_text)
 
     def get_mood():
         # happy = right order, meh = some toppings right, angry = none right
@@ -175,7 +185,32 @@ async def main():
         label.set_alpha(alpha)
         screen.blit(label, label.get_rect(center=(rect.centerx - 4, rect.centery - 4)))
 
+    # STORY FLOW (Sophia): cutscene frames -> tutorial (placeholder) -> game
+    def next_story_screen():
+        nonlocal status, cutscene_index
+        if status == "tutorial":
+            if cutscene_index < len(cutscene) - 1:
+                cutscene_index += 1
+            else:
+                status = "how_to_play"
+        elif status == "how_to_play":
+            status = "game"
+
+    # KEY HINTS (Sophia): small floating note above something on the counter
+    def draw_key_hint(letter, pos):
+        bob = int(math.sin(pygame.time.get_ticks() / 300) * 3)    # gentle up-and-down float
+        x, y = pos[0], pos[1] + bob
+        note = pygame.Rect(0, 0, 36, 36)
+        note.midbottom = (x, y - 8)
+        pygame.draw.rect(screen, (255, 248, 235), note, border_radius=8)
+        pygame.draw.rect(screen, (148, 90, 45), note, 2, border_radius=8)
+        pygame.draw.polygon(screen, (148, 90, 45), [(x - 6, y - 9), (x + 6, y - 9), (x, y - 2)])
+        label = font.render(letter, True, (148, 90, 45))
+        screen.blit(label, label.get_rect(center=note.center))
+
     def generate_order():
+        if len(available_toppings) == 0:
+            return []    # no toppings set up yet: customers order just a base
         number = random.randint(1, len(available_toppings))
         return random.sample(available_toppings, number)
 
@@ -210,7 +245,8 @@ async def main():
                 self.name = name
                 self.order = order
                 self.image = CUSTOMERS[name]["default"]
-                self.rect = self.image.get_rect(center=(640, 200))
+                self.rect = self.image.get_rect(center=(850, 180))
+                self.spawn_time = pygame.time.get_ticks() 
     
             def check_order(self, selected_toppings):
                 if set(selected_toppings) == set(self.order):
@@ -221,22 +257,26 @@ async def main():
                     return False
     
             def draw(self, screen):
-                screen.blit(self.image, self.rect)
+                # POP-UP ANIMATION (Sophia): grows from the counter with a small bounce
+                size = max(0.01, ease_out_back((pygame.time.get_ticks() - self.spawn_time) / 400))
+                image = pygame.transform.smoothscale(self.image, (max(1, int(self.image.get_width() * size)), max(1, int(self.image.get_height() * size))))
+                screen.blit(image, image.get_rect(midbottom=self.rect.midbottom))
 
     class Topping(pygame.sprite.Sprite):
         def __init__(self, image_path, x, y, name, value):
             super().__init__()
-            self.image = pygame.image.load(image_path).convert_alpha()
+            self.image = image_path.convert_alpha()   # TOPPINGS already loads the image
             self.rect = self.image.get_rect(topleft=(x, y))
             self.value = value
             self.name = name
 
-            def update(self):
-                pass
-            def handle_click(self):
-                nonlocal money
-                money += self.value
-                self.kill()
+        def update(self):
+            pass
+
+        def handle_click(self):
+            nonlocal money
+            money += self.value
+            self.kill()
 
         def draw(self, screen):
             screen.blit(self.image, self.rect)
@@ -251,13 +291,13 @@ async def main():
 
     toppings = pygame.sprite.Group()
 
-    available_toppings = ['''add three here''']
+    available_toppings = []   # empty while TOPPINGS is commented out. Later: e.g. ["pearls", "grassjelly", "coconut"] (max 3)
     selected_toppings = []
     current_order = []
     customer = None
 
     customer_timer = 0
-    next_customer_time = random.randint(3000, 7000)
+    next_customer_time = random.randint(500, 1500)
 
     customer_reacting = False
     reaction_timer = 0
@@ -282,12 +322,31 @@ async def main():
     title_timer = 0      # how long the title screen has been showing (ms)
     start_lift = 0       # hover animation, 0 = resting, 1 = fully lifted
     quit_lift = 0
+
+    # EMPTY CUP (Sophia): press C on the game screen to place it on the cutting board
+    CUP_POS = (555, 575)     # bottom-middle of the cup, on the cutting board
+    cup_shown = False
+    cup_timer = 0            # for the pop-up animation (ms)
+
+    # BASES (Sophia): click a jar on the right of the background to fill the cup
+    BASE_ZONES = {
+        "taro": pygame.Rect(1150, 320, 120, 110),      # purple jar
+        "matcha": pygame.Rect(1035, 455, 130, 135),    # green jar
+        "milktea": pygame.Rect(1170, 430, 105, 160),   # brown jar
+    }
+    selected_base = None     # None = empty cup
+
+    # KEY HINTS (Sophia): letter -> spot just above the thing on the counter
+    KEY_HINTS = {
+        "C": (1000, 315),    # cup stacks
+        "I": (801, 382),     # ice bucket
+    }
     
     tutorial_text = []
 
     # CUSTOMER DIALOGUE (Sophia)
     # names must match the keys in CUSTOMERS
-    BASES = ["milk tea", "taro milk tea", "matcha"]
+    BASE_NAMES = {"milktea": "milk tea", "matcha": "matcha", "taro": "taro milk tea"}   # how bases are said out loud
     CUSTOMER_DIALOGUE = {
         "snoopy": {
             "order": ["A {base} with {toppings}... the perfect reward after a long day of napping."],
@@ -308,7 +367,7 @@ async def main():
             "angry": ["GRRRRR this isnt what i asked for bro >:("],
         },
         "chiikawa": {
-            "order": ["Hmph! I-it's not like I wanted a {base} with {toppings} or anything! And I definitely didn't come here just to see you... b-baka!"],
+            "order": ["What do I want? Hmph.. it's not like i'd like a {base} with {toppings} or anything! And I definitely didn't come here just to see you... b-baka!"],
             "happy": ["Wow you made it right... but it's not like it was for me, s-so I don't care or anything!!!! H-hmph~"],
             "meh": ["Th-this is kind of close... b-but don't think I'm impressed or anything! Hmph."],
             "angry": ["b-baka! What the hell's wrong with you! Can't even make a simple drink..!"],
@@ -320,8 +379,8 @@ async def main():
             "angry": ["cro... wrong order fam."],
         },
     }
-    dialogue_font = pygame.font.Font(FONT_PATH, 30)
-    dialogue_box = pygame.Rect(340, 320, 600, 110)
+    dialogue_font = pygame.font.Font(FONT_PATH, 36)
+    dialogue_box = pygame.Rect(30, 520, 950, 180)     # bottom of the screen, left of the SERVE button
     dialogue_customer = None     # the customer the current dialogue belongs to
     dialogue_text = ""
     current_base = ""
@@ -342,12 +401,12 @@ async def main():
                     running = False
                 elif event.key == K_RETURN and status == "title":
                     status = "tutorial"
-                elif event.key == K_RETURN and status == "tutorial":
-                    status = "game"
-                elif event.key == K_SPACE and status == "tutorial":
-                    if event.key == K_SPACE and status == "tutorial":
-                        if cutscene_index < len(cutscene) - 1:
-                            cutscene_index += 1
+                elif (event.key == K_RETURN or event.key == K_SPACE) and status in ("tutorial", "how_to_play"):
+                    next_story_screen()
+                elif event.key == K_c and status == "game":
+                    # EMPTY CUP (Sophia)
+                    cup_shown = True
+                    cup_timer = 0
             elif event.type == MOUSEBUTTONDOWN:
                 if status == "mode_select":
                     if browser_button.collidepoint(event.pos):
@@ -355,6 +414,9 @@ async def main():
                     elif download_button.collidepoint(event.pos):
                         start_camera()
                         status = "title"
+                elif status in ("tutorial", "how_to_play"):
+                    # STORY FLOW (Sophia): click anywhere to go to the next screen
+                    next_story_screen()
                 elif status == "title":
                     # TITLE SCREEN (Sophia)
                     if title_timer > 1400:
@@ -397,6 +459,12 @@ async def main():
                                     for name in current_order
                                 )
 
+                    # BASES (Sophia): click a jar to fill the cup (cup has to be out first, press C)
+                    if cup_shown:
+                        for base_name, zone in BASE_ZONES.items():
+                            if zone.collidepoint(event.pos):
+                                selected_base = base_name
+
         screen.fill((0, 0, 0))
 
 
@@ -420,7 +488,7 @@ async def main():
             screen.blit(browser_text, browser_text.get_rect(center=browser_button.center))
             screen.blit(download_text, download_text.get_rect(center=download_button.center))
         elif status == "title":
-            # TITLE SCREEN (Sophia)
+            # TITLE SCREEN
             title_timer += dt
 
             # background fades in from black
@@ -434,14 +502,13 @@ async def main():
             title_image.set_alpha(int(255 * max(0, min(1, t))))
             screen.blit(title_image, title_image.get_rect(center=(TITLE_CENTER[0], TITLE_CENTER[1] - int((1 - appear) * 120))))
 
-            # hover: smoothly move toward lifted (1) or resting (0)
             mouse_pos = pygame.mouse.get_pos()
             start_target = 1 if start_rect.collidepoint(mouse_pos) else 0
             quit_target = 1 if quit_rect.collidepoint(mouse_pos) else 0
             start_lift += (start_target - start_lift) * 0.18
             quit_lift += (quit_target - quit_lift) * 0.18
 
-            # buttons slide in from the right, one after the other
+            # buttons slide in from the right
             draw_button("start", START_CENTER, start_lift, ease_out_back((title_timer - 800) / 600))
             draw_button("quit", QUIT_CENTER, quit_lift, ease_out_back((title_timer - 950) / 600))
 
@@ -452,12 +519,39 @@ async def main():
             pass
         elif status == "tutorial":
             screen.blit(cutscene[cutscene_index], (0, 0))
+        elif status == "how_to_play":
+            # TUTORIAL SPOT (Sophia): black screen for now, put the tutorial here later
+            hint_text = font.render("click to start", True, (90, 90, 90))
+            screen.blit(hint_text, hint_text.get_rect(center=(640, 680)))
         elif status == "game":
-            # MAIN SCREEN BACKGROUND (Sophia)
+            # MAIN SCREEN BACKGROUND
             screen.blit(main_screen, (0, 0))
             if use_camera and camera_image is not None:
                 # small webcam preview so players can still see their hands
                 screen.blit(pygame.transform.scale(camera_image, (320, 240)), (SCREEN_WIDTH - 330, 10))
+
+            # EMPTY CUP (Sophia): pops up with a small bounce
+            if cup_shown:
+                cup_timer += dt
+                size = max(0.01, ease_out_back(cup_timer / 350))
+                cup_picture = cup_image if selected_base is None else BASES[selected_base]["image"]
+                cup = pygame.transform.smoothscale(cup_picture, (max(1, int(cup_picture.get_width() * size)), max(1, int(cup_picture.get_height() * size))))
+                screen.blit(cup, cup.get_rect(midbottom=CUP_POS))
+
+            # BASES (Sophia): hover highlight on the jars (temporary look)
+            mouse_pos = pygame.mouse.get_pos()
+            for base_name, zone in BASE_ZONES.items():
+                if zone.collidepoint(mouse_pos):
+                    highlight = pygame.Surface(zone.size, pygame.SRCALPHA)
+                    pygame.draw.rect(highlight, (255, 255, 255, 70), highlight.get_rect(), border_radius=14)
+                    screen.blit(highlight, zone)
+                    pygame.draw.rect(screen, (148, 90, 45), zone, 3, border_radius=14)
+                    base_label = font.render(base_name, True, (148, 90, 45))
+                    screen.blit(base_label, base_label.get_rect(midbottom=(zone.centerx, zone.top - 4)))
+
+            # KEY HINTS (Sophia)
+            for letter, pos in KEY_HINTS.items():
+                draw_key_hint(letter, pos)
 
             if use_camera:
                 # OPENCV MODE (Sophia): same as clicking mode, but toppings are picked with fingers
@@ -586,7 +680,7 @@ async def main():
             # new customer walks up: pick a base and an order line
             if customer is not None and customer is not dialogue_customer:
                 dialogue_customer = customer
-                current_base = random.choice(BASES)
+                current_base = random.choice(list(BASES.keys()))
                 reaction_given = False
                 dialogue_text = ""
                 if customer.name in CUSTOMER_DIALOGUE:
@@ -606,11 +700,11 @@ async def main():
             # DRAW DIALOGUE
             if dialogue_text != "":
                 screen.blit(pygame.transform.smoothscale(dialogue_image, dialogue_box.size), dialogue_box)
-                y = dialogue_box.top + 15
-                for line in wrap_text(dialogue_text, dialogue_font, dialogue_box.width - 30):
+                y = dialogue_box.top + 30
+                for line in wrap_text(dialogue_text, dialogue_font, dialogue_box.width - 80):
                     line_surface = dialogue_font.render(line, True, (0, 0, 0))
-                    screen.blit(line_surface, (dialogue_box.left + 15, y))
-                    y += 28
+                    screen.blit(line_surface, (dialogue_box.left + 40, y))
+                    y += dialogue_font.get_linesize()
 
             money_text = font.render(f"Money: ${money}", True, (148, 90, 45))
             screen.blit(money_text, (20, 20))
