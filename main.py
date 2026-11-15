@@ -23,9 +23,10 @@ async def main():
     clock = pygame.time.Clock()
     CUSTOMERS = {
         "hamster":{"default":pygame.image.load("assets/characters/hamster_default.png"), "angry":pygame.image.load("assets/characters/hamster_angry.png"), "happy":pygame.image.load("assets/characters/hamster_happy.png")},
-        "chiikawa":{"default":pygame.image.load("assets/characters/chiikawa_default.png"), "angry":pygame.image.load("assets/characters/chiikawa_angry.png"), "happy":pygame.image.load("assets/characters/chiikawa_happy.png")},
-        "peppapig":{"default":pygame.image.load("assets/characters/peppapig_default.png"), "angry":pygame.image.load("assets/characters/peppapig_angry.png"), "happy":pygame.image.load("assets/characters/peppapig_happy.png")},
-        "redpanda":{"default":pygame.image.load("assets/characters/redpanda_default.png"), "angry":pygame.image.load("assets/characters/redpanda_angry.png"), "happy":pygame.image.load("assets/characters/redpanda_happy.png")},
+        "chiikawa":{"default":pygame.image.load("assets/characters/chiikawa_default.png"), "angry":pygame.image.load("assets/characters/chiikawa_angry.png"), "happy":pygame.image.load("assets/characters/chiikawa_happy.png"), "meh":pygame.image.load("assets/characters/chiikawa_meh.png")},
+        "peppapig":{"default":pygame.image.load("assets/characters/peppapig_default.png"), "angry":pygame.image.load("assets/characters/peppapig_angry.png"), "happy":pygame.image.load("assets/characters/peppapig_happy.png"), "meh":pygame.image.load("assets/characters/peppapig_meh.png")},
+        "redpanda":{"default":pygame.image.load("assets/characters/redpanda_default.png"), "angry":pygame.image.load("assets/characters/redpanda_angry.png"), "happy":pygame.image.load("assets/characters/redpanda_happy.png"), "meh":pygame.image.load("assets/characters/redpanda_meh.png")},
+        "snoopy":{"default":pygame.image.load("assets/characters/snoopy_default.png"), "angry":pygame.image.load("assets/characters/snoopy_angry.png"), "happy":pygame.image.load("assets/characters/snoopy_happy.png")}
     }
 
     cup_image = pygame.image.load("assets/emptycup.png").convert_alpha()
@@ -218,7 +219,7 @@ async def main():
         return random.sample(available_toppings, number)
 
     def new_customer():
-        nonlocal customer, current_order
+        nonlocal customer, current_order, current_base
 
         name = random.choice(list(CUSTOMERS.keys()))
         current_base = random.choice(list(BASES.keys()))
@@ -400,7 +401,7 @@ async def main():
     dialogue_box = pygame.Rect(30, 520, 950, 180)     # bottom of the screen, left of the SERVE button
     dialogue_customer = None     # the customer the current dialogue belongs to
     dialogue_text = ""
-    current_base = ""
+    current_base = None
     reaction_given = False
 
     serve_button = pygame.Rect(1000, 600, 200, 70)
@@ -485,6 +486,7 @@ async def main():
                         for base_name, zone in BASE_ZONES.items():
                             if zone.collidepoint(event.pos):
                                 selected_base = base_name
+                                current_base = base_name
 
         screen.fill((0, 0, 0))
 
@@ -701,7 +703,6 @@ async def main():
             # new customer walks up: pick a base and an order line
             if customer is not None and customer is not dialogue_customer:
                 dialogue_customer = customer
-                current_base = random.choice(list(BASES.keys()))
 
                 reaction_given = False
                 dialogue_text = ""
