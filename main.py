@@ -103,6 +103,35 @@ async def main():
             return False
         return True
 
+    # CUSTOMER DIALOGUE (Sophia)
+    def fill_in_dialogue(line):
+        toppings_text = " and ".join(current_order)
+        return line.format(base=current_base, toppings=toppings_text, topping=toppings_text)
+
+    def get_mood():
+        # happy = right order, meh = some toppings right, angry = none right
+        if set(selected_toppings) == set(current_order):
+            return "happy"
+        for name in selected_toppings:
+            if name in current_order:
+                return "meh"
+        return "angry"
+
+    def wrap_text(text, font, max_width):
+        words = text.split()
+        lines = []
+        current_line = ""
+        for word in words:
+            test_line = (current_line + " " + word).strip()
+            if font.size(test_line)[0] <= max_width:
+                current_line = test_line
+            else:
+                lines.append(current_line)
+                current_line = word
+        if current_line:
+            lines.append(current_line)
+        return lines
+
     def generate_order():
         number = random.randint(1, len(available_toppings))
         return random.sample(available_toppings, number)
@@ -194,6 +223,48 @@ async def main():
     cutscene_index = 0
     
     tutorial_text = []
+
+    # CUSTOMER DIALOGUE (Sophia)
+    # names must match the keys in CUSTOMERS
+    BASES = ["milk tea", "taro milk tea", "matcha"]
+    CUSTOMER_DIALOGUE = {
+        "snoopy": {
+            "order": ["A {base} with {toppings}... the perfect reward after a long day of napping."],
+            "happy": ["*happy dance* ...This {base} is perfect. Best nap snack ever."],
+            "meh": ["*tilts head* ...Not bad. Not great. Like a nap that was too short."],
+            "angry": ["*flops over* ...This is NOT what I ordered. Ugh."],
+        },
+        "hamster": {
+            "order": ["HI CHAT CAN I GET A {base} WITH SOME {topping} PLSPSLPSSPLS!!!!"],
+            "happy": ["I LOVE THIS DRINK AND I LOVE YOUUUUUUU BYEEE"],
+            "meh": ["Hmm, I think you made it wrong... that's okay ig."],
+            "angry": ["Bro. Are u fr. I'm allergic to {base}"],
+        },
+        "red panda": {
+            "order": ["Grr uwu"],
+            "happy": ["Grr~ uwu! It's perfect, thank youuu!"],
+            "meh": ["Grr... it's okay I guess... uwu"],
+            "angry": ["GRRR! This is NOT what I asked for! >:("],
+        },
+        "chiikawa": {
+            "order": ["Hmph! I-it's not like I wanted a {base} with {toppings} or anything! And I definitely didn't come here just to see you... b-baka!"],
+            "happy": ["Wow you made it right... but it wasn't for me, s-so I don't care or anything!!!! H-hmph~"],
+            "meh": ["Th-this is kind of close... b-but don't think I'm impressed or anything! Hmph."],
+            "angry": ["b-baka! What the hell's wrong with you! Can't even make a simple drink..!"],
+        },
+        "peppa pig": {
+            "order": ["Two Two's my Poo Poo's, I finna take a {base} w some {topping}, don't be a Gerbert fam."],
+            "happy": ["Yooo this is fire! Bless up bossman!"],
+            "meh": ["Nah who made this. I'm sooper cheesed fam."],
+            "angry": ["cro... wrong order fam."],
+        },
+    }
+    dialogue_font = pygame.font.Font(None, 30)
+    dialogue_box = pygame.Rect(340, 320, 600, 110)
+    dialogue_customer = None     # the customer the current dialogue belongs to
+    dialogue_text = ""
+    current_base = ""
+    reaction_given = False
 
     serve_button = pygame.Rect(1000, 600, 200, 70)
 
@@ -407,6 +478,37 @@ async def main():
                         (255, 255, 255)
                     )
                     screen.blit(order_text, (20, 120))
+
+            # CUSTOMER DIALOGUE (Sophia)
+            # new customer walks up: pick a base and an order line
+            if customer is not None and customer is not dialogue_customer:
+                dialogue_customer = customer
+                current_base = random.choice(BASES)
+                reaction_given = False
+                dialogue_text = ""
+                if customer.name in CUSTOMER_DIALOGUE:
+                    dialogue_text = fill_in_dialogue(random.choice(CUSTOMER_DIALOGUE[customer.name]["order"]))
+
+            # drink was served: switch to a reaction line
+            if customer is not None and customer_reacting and not reaction_given:
+                reaction_given = True
+                if customer.name in CUSTOMER_DIALOGUE:
+                    mood = get_mood()
+                    dialogue_text = fill_in_dialogue(random.choice(CUSTOMER_DIALOGUE[customer.name][mood]))
+
+            # customer left
+            if customer is None:
+                dialogue_text = ""
+
+            # DRAW DIALOGUE
+            if dialogue_text != "":
+                pygame.draw.rect(screen, (255, 255, 255), dialogue_box)
+                pygame.draw.rect(screen, (80, 80, 80), dialogue_box, 3)
+                y = dialogue_box.top + 15
+                for line in wrap_text(dialogue_text, dialogue_font, dialogue_box.width - 30):
+                    line_surface = dialogue_font.render(line, True, (0, 0, 0))
+                    screen.blit(line_surface, (dialogue_box.left + 15, y))
+                    y += 28
 
             money_text = font.render(f"Money: ${money}", True, (255, 255, 255))
             screen.blit(money_text, (20, 20))
