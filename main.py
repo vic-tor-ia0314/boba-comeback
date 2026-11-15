@@ -257,6 +257,8 @@ async def main():
     cutscene = [pygame.image.load("assets/ui/cutscene_frame1.png"), pygame.image.load("assets/ui/cutscene_frame2.png")]
     cutscene_index = 0
 
+    ending_pending = False
+
     # MAIN SCREEN BACKGROUND (Sophia)
     main_screen = pygame.transform.scale(pygame.image.load("assets/ui/background.png").convert(), (SCREEN_WIDTH, SCREEN_HEIGHT))
     camera_image = None
@@ -468,9 +470,12 @@ async def main():
                         customer = None
                         customer_reacting = False
                         reaction_timer = 0
-                        #new customer wait time
-                        customer_timer = 0
-                        next_customer_time = random.randint(3000, 7000)
+
+                        if ending_pending:
+                            status = "ending"
+                        else:
+                            customer_timer = 0
+                            next_customer_time = random.randint(3000, 7000)
 
                 # DRAW CUSTOMER
                 if customer is not None:
@@ -540,9 +545,12 @@ async def main():
                         customer = None
                         customer_reacting = False
                         reaction_timer = 0
-                        #new customer wait time
-                        customer_timer = 0
-                        next_customer_time = random.randint(3000, 7000)
+                
+                        if ending_pending:
+                            status = "ending"
+                        else:
+                            customer_timer = 0
+                            next_customer_time = random.randint(3000, 7000)
 
                 # DRAW CUSTOMER
                 if customer is not None:
@@ -609,6 +617,16 @@ async def main():
 
             # WHEN ADDING MORE TOPPINGS:
             # toppings.add(Topping("assets/toppings/example.png", 700, 300, "example", 20))
+        elif status == "ending":
+            screen.fill((255, 230, 200))
+
+            ending_text = font.render(
+                "You reached $100! Congratulations!", True, (148, 90, 45))
+
+            screen.blit(ending_text, ending_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)))
+
+        if money >= 100 and status == "game":
+            ending_pending = True
 
         pygame.display.flip()
         clock.tick(60)
