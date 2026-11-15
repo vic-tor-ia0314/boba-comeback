@@ -237,7 +237,7 @@ async def main():
 
     def serve_drink():
         # MONEY ONLY CHANGES HERE: happy = full price, meh = half, angry = you lose half (wasted ingredients)
-        nonlocal money, customer_reacting, reaction_timer, last_mood, money_popup_text, money_popup_timer
+        nonlocal money, customer_reacting, reaction_timer, last_mood, money_popup_text, money_popup_timer, win
         nonlocal cup_shown, selected_base, served_base, served_toppings, served_timer
         nonlocal ice_added, served_ice
         last_mood = get_mood()
@@ -250,6 +250,8 @@ async def main():
         else:
             change = -(total // 2)
         money += change
+        if money >= 100:
+            win = True
         money_popup_text = ("+$" if change >= 0 else "-$") + str(abs(change))
         money_popup_timer = 0
         customer.image = CUSTOMERS[customer.name].get(last_mood, CUSTOMERS[customer.name]["default"])
@@ -737,6 +739,7 @@ async def main():
     
     #MAIN#
     money = 0
+    win = False
     status = "mode_select"
 
     toppings = pygame.sprite.Group()
@@ -827,7 +830,7 @@ async def main():
     selected_base = None     # None = empty cup
 
     # ICE (Sophia): customers ask for ice or no ice
-    ice_image = pygame.image.load("assets/ice.png").convert_alpha()
+    ice_image = pygame.image.load("assets/Ice.png").convert_alpha()
     ice_added = False        # is there ice in the cup right now
     current_ice = False      # does the customer want ice
     served_ice = False
@@ -1116,12 +1119,15 @@ async def main():
 
             if customer_reacting:
                 reaction_timer += dt
-                if reaction_timer >= 2000:
+
+                if reaction_timer >= 2000 and not dialogue_visible:
                     customer = None
                     customer_reacting = False
                     reaction_timer = 0
                     customer_timer = 0
                     next_customer_time = random.randint(3000, 7000)
+                    if win:
+                        status = "end"
 
             # DRAW CUSTOMER
             if customer is not None:
@@ -1242,17 +1248,18 @@ async def main():
         
         elif status == "end":
             # END SCREEN
+            screen.fill((255, 255, 255))
             screen.blit(end_screen, (0, 0))
 
         # SCREEN TRANSITIONS: old screen fades out over the new one
-        if transition_snapshot is not None:
-            transition_timer += dt
-            fade = 1 - transition_timer / 450
-            if fade <= 0:
-                transition_snapshot = None
-            else:
-                transition_snapshot.set_alpha(int(255 * fade))
-                screen.blit(transition_snapshot, (0, 0))
+            if transition_snapshot is not None:
+                transition_timer += dt
+                fade = 1 - transition_timer / 450
+                if fade <= 0:
+                    transition_snapshot = None
+                else:
+                    transition_snapshot.set_alpha(int(255 * fade))
+                    screen.blit(transition_snapshot, (0, 0))
 
         pygame.display.flip()
         clock.tick(60)
