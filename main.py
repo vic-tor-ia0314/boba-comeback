@@ -488,11 +488,7 @@ async def main():
         label.set_alpha(alpha)
         screen.blit(label, label.get_rect(center=(rect.centerx - 4, rect.centery - 4)))
 
-<<<<<<< HEAD
     # STORY FLOW: cutscene frames -> tutorial (placeholder) -> game
-=======
-    # STORY FLOW cutscene frames -> tutorial -> game
->>>>>>> 5613cf2679f4e647400916944e994a4cb3dfdfa0
     def next_story_screen():
         nonlocal status, cutscene_index, tutorial_text_index
         if status == "tutorial":
@@ -657,21 +653,17 @@ async def main():
     customer_reacting = False
     reaction_timer = 0
 
-<<<<<<< HEAD
     cutscene = [pygame.image.load("assets/ui/cutscene_frame1.png"), pygame.image.load("assets/ui/cutscene_frame2.png"), pygame.image.load("assets/ui/cutscene_frame3.png"), pygame.image.load("assets/ui/tutorial1.png"), pygame.image.load("assets/ui/tutorial2.png")]
-=======
-    cutscene = [pygame.image.load("assets/ui/cutscene_frame1.png"), pygame.image.load("assets/ui/cutscene_frame2.png"), pygame.image.load("assets/ui/cutscene_frame3.png")]
->>>>>>> 5613cf2679f4e647400916944e994a4cb3dfdfa0
     cutscene_index = 0
     tutorial_text_index = 0
 
     TUTORIAL_INSTRUCTIONS = {
-        4: [
+        3: [
             "Welcome to Boba Comeback, where you attempt to bounce back financially after going horribly bankrupt!",
             "Customers, like Peppa Pig over here, will come in and order drinks from you."
             "It is your job to correctly make them. The order matters!"
         ],
-        5: [
+        4: [
             "Click C to place a cup on the center board.",
             "Then, click any of the three jars on the right to choose your base.",
             "Click the right topping boxes to add toppings into the cup.",
