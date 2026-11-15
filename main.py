@@ -59,8 +59,14 @@ async def main():
     finger_count = 0        # fingers counted this frame (both hands)
     held_count = 0          # the number being held right now
     hold_frames = 0         # how long it's been held
-    HOLD_TIME = 45          # 45 frames = about 1 second
+    MAX_HANDS = 1           # 1 = one hand (1-5 fingers, more reliable), 2 = both hands (1-8)
+    HOLD_TIME = 15          # frames to hold the same number (about 0.25-0.5 sec, depends on the camera's speed)
     waiting_for_reset = False
+    hand_points = []        # the 21 points of each hand found this frame (for drawing)
+    camera_size = (640, 480)
+    # which points to join with lines to draw the hand (wrist, then each finger)
+    HAND_LINES = [(0, 1), (1, 2), (2, 3), (3, 4), (0, 5), (5, 6), (6, 7), (7, 8), (5, 9), (9, 10), (10, 11), (11, 12),
+                  (9, 13), (13, 14), (14, 15), (15, 16), (13, 17), (17, 18), (18, 19), (19, 20), (0, 17)]
 
     # finger number -> topping. Names must match the keys in TOPPINGS
     HAND_TOPPINGS = ["pearls", "grassjelly", "coconutjelly", "strawberrypearls",
@@ -111,19 +117,78 @@ async def main():
         return count
 
     def count_all_fingers(frame):
+        nonlocal hand_points, camera_size
         total = 0
+        hand_points = []
+        camera_size = (frame.shape[1], frame.shape[0])
         palms = palm_detector.infer(frame)
-        for palm in palms[:2]:                       # only the first 2 hands
+        for palm in palms[:MAX_HANDS]:               # only look at MAX_HANDS hands
             hand = hand_detector.infer(frame, palm)
             if hand is not None:
                 points = hand[4:67].reshape(21, 3)    # 21 points, each (x, y, z)
+                hand_points.append(points)
                 total += count_fingers_on_hand(points)
         return total
+
+    def draw_hand_preview(preview=None, show_info=True):
+        # webcam preview (top right by default) with the tracked hands drawn on top
+        if preview is None:
+            preview = pygame.Rect(SCREEN_WIDTH - 340, 16, 320, 240)
+        pygame.draw.rect(screen, (148, 90, 45), preview.inflate(10, 10), border_radius=12)
+        screen.blit(pygame.transform.scale(camera_image, preview.size), preview)
+        scale_x = preview.width / camera_size[0]
+        scale_y = preview.height / camera_size[1]
+        for points in hand_points:
+            spots = [(preview.left + int(p[0] * scale_x), preview.top + int(p[1] * scale_y)) for p in points]
+            for a, b in HAND_LINES:
+                pygame.draw.line(screen, (255, 244, 220), spots[a], spots[b], 3)
+            for spot in spots:
+                pygame.draw.circle(screen, (122, 150, 112), spot, 5)
+                pygame.draw.circle(screen, (255, 244, 220), spot, 5, 1)
+
+        # finger count badge on the preview
+        badge = pygame.Rect(preview.left + 10, preview.bottom - 58, 58, 48)
+        pygame.draw.rect(screen, SAGE, badge, border_radius=10)
+        number = money_font.render(str(finger_count), True, (255, 244, 220))
+        screen.blit(number, number.get_rect(center=badge.center))
+        if len(hand_points) == 0:
+            hint = key_font.render("show your hands", True, (255, 244, 220))
+            screen.blit(hint, hint.get_rect(midleft=(badge.right + 10, badge.centery)))
+
+        if not show_info:
+            return
+
+        # what the number picks + hold progress bar, under the preview
+        info = pygame.Rect(preview.left - 5, preview.bottom + 10, preview.width + 10, 64)
+        pygame.draw.rect(screen, (255, 250, 238), info, border_radius=10)
+        pygame.draw.rect(screen, (148, 90, 45), info, 3, border_radius=10)
+        if picking_toppings():
+            if 1 <= finger_count <= len(HAND_TOPPINGS):
+                name = HAND_TOPPINGS[finger_count - 1]
+                locked = name not in available_toppings
+                text = str(finger_count) + " = " + TOPPING_NAMES[name] + (" (locked)" if locked else "")
+            else:
+                text = "hold up 1-" + str(5 if MAX_HANDS == 1 else 8) + " fingers"
+            if waiting_for_reset:
+                text = "added! put your hands down"
+        elif customer is not None and not customer_reacting:
+            text = "toppings done! serve [S]"
+        else:
+            text = "waiting for a customer..."
+        label = key_font.render(text, True, (110, 62, 30))
+        screen.blit(label, label.get_rect(midtop=(info.centerx, info.top + 8)))
+        bar = pygame.Rect(info.left + 14, info.bottom - 22, info.width - 28, 12)
+        pygame.draw.rect(screen, (230, 215, 190), bar, border_radius=6)
+        if picking_toppings() and hold_frames > 0:
+            filled = bar.copy()
+            filled.width = int(bar.width * min(1, hold_frames / HOLD_TIME))
+            pygame.draw.rect(screen, (122, 150, 112), filled, border_radius=6)
 
     def add_topping(name):
         # adds a topping to the cup (in the order you pick them), max 3, only unlocked ones
         if name in available_toppings and name not in selected_toppings and len(selected_toppings) < 3:
             selected_toppings.append(name)
+            topping_drop_start[name] = pygame.time.get_ticks()   # starts the drop-in bounce
 
     def add_topping_by_hand(name):
         add_topping(name)
@@ -197,6 +262,28 @@ async def main():
         selected_base = None
         selected_toppings.clear()
 
+    def draw_ui_button(name, rect, text, key_text, fill, text_colour, mouse_pos):
+        # rounded button with a drop shadow, lifts and brightens a little on hover
+        target = 1 if rect.collidepoint(mouse_pos) else 0
+        button_hover[name] = button_hover.get(name, 0) + (target - button_hover.get(name, 0)) * 0.2
+        lift = int(button_hover[name] * 4)
+        shadow = rect.move(0, 6)
+        darker = (max(0, fill[0] - 55), max(0, fill[1] - 55), max(0, fill[2] - 55))
+        pygame.draw.rect(screen, darker, shadow, border_radius=14)
+        face = rect.move(0, -lift)
+        lighter = tuple(min(255, int(c + (255 - c) * 0.15 * button_hover[name])) for c in fill)
+        pygame.draw.rect(screen, lighter, face, border_radius=14)
+        pygame.draw.rect(screen, darker, face, 3, border_radius=14)
+        # thin highlight along the top edge
+        pygame.draw.line(screen, tuple(min(255, c + 45) for c in lighter), (face.left + 14, face.top + 5), (face.right - 14, face.top + 5), 2)
+        label = font.render(text, True, text_colour)
+        key_label = key_font.render(key_text, True, text_colour)
+        key_label.set_alpha(190)
+        total_width = label.get_width() + 8 + key_label.get_width()
+        x = face.centerx - total_width // 2
+        screen.blit(label, label.get_rect(midleft=(x, face.centery)))
+        screen.blit(key_label, key_label.get_rect(midleft=(x + label.get_width() + 8, face.centery + 2)))
+
     def draw_money():
         # big sage-green money box in the top left
         panel = pygame.Rect(20, 16, 250, 76)
@@ -206,8 +293,9 @@ async def main():
         pygame.draw.rect(screen, SAGE, sign_box, border_radius=10)
         sign = money_font.render("$", True, (245, 240, 225))
         screen.blit(sign, sign.get_rect(center=sign_box.center))
-        amount_colour = SAGE if money >= 0 else (150, 60, 50)
-        amount = money_font.render(str(money), True, amount_colour)
+        shown = int(round(displayed_money))      # counts up/down smoothly toward the real money
+        amount_colour = SAGE if shown >= 0 else (150, 60, 50)
+        amount = money_font.render(str(shown), True, amount_colour)
         screen.blit(amount, amount.get_rect(midleft=(sign_box.right + 14, panel.centery)))
         # +$ / -$ floats up and fades after serving
         if money_popup_text != "" and money_popup_timer < 1300:
@@ -244,6 +332,20 @@ async def main():
             label.set_alpha(int(255 * amount))
             screen.blit(label, label.get_rect(center=tag.center))
 
+    def ease_out_bounce(t):
+        # falls and bounces a couple of times before settling (like a ball landing)
+        t = max(0, min(1, t))
+        if t < 1 / 2.75:
+            return 7.5625 * t * t
+        elif t < 2 / 2.75:
+            t -= 1.5 / 2.75
+            return 7.5625 * t * t + 0.75
+        elif t < 2.5 / 2.75:
+            t -= 2.25 / 2.75
+            return 7.5625 * t * t + 0.9375
+        t -= 2.625 / 2.75
+        return 7.5625 * t * t + 0.984375
+
     def draw_cup(base, cup_toppings, bottom_middle, size, alpha):
         # one cup with its base and toppings, plus a soft shadow so it stands out from the board
         picture = cup_image if base is None else BASES[base]["image"]
@@ -252,11 +354,18 @@ async def main():
         shadow = pygame.Surface((int(width * 0.9) + 2, 22), pygame.SRCALPHA)
         pygame.draw.ellipse(shadow, (60, 35, 20, int(70 * alpha / 255)), shadow.get_rect())
         screen.blit(shadow, shadow.get_rect(center=(bottom_middle[0], bottom_middle[1] - 2)))
-        layers = [picture] + [TOPPINGS[name]["image"] for name in cup_toppings]
-        for image in layers:
+        layers = [(picture, 0)]
+        for name in cup_toppings:
+            # a topping that was just added drops in from above and bounces into place
+            drop = 0
+            if name in topping_drop_start:
+                t = (pygame.time.get_ticks() - topping_drop_start[name]) / 600
+                drop = int((1 - ease_out_bounce(t)) * 110)
+            layers.append((TOPPINGS[name]["image"], drop))
+        for image, drop in layers:
             scaled = pygame.transform.smoothscale(image, (max(1, int(image.get_width() * size)), max(1, int(image.get_height() * size))))
             scaled.set_alpha(alpha)
-            screen.blit(scaled, scaled.get_rect(midbottom=bottom_middle))
+            screen.blit(scaled, scaled.get_rect(midbottom=(bottom_middle[0], bottom_middle[1] - drop)))
 
     def dialogue_done_typing():
         return dialogue_timer * TYPE_SPEED >= len(dialogue_text)
@@ -327,8 +436,10 @@ async def main():
         line_height = receipt_font.get_linesize()
         width = 280
         height = 30 + line_height * len(lines)
-        top = 20 if not use_camera else 260          # below the webcam preview in hand mode
-        paper = pygame.Rect(SCREEN_WIDTH - width - 20, top, width, height)
+        if use_camera:
+            paper = pygame.Rect(290, 16, width, height)                     # next to the money box in hand mode
+        else:
+            paper = pygame.Rect(SCREEN_WIDTH - width - 20, 20, width, height)  # top right in clicking mode
         pygame.draw.rect(screen, (255, 250, 238), paper, border_radius=6)
         pygame.draw.rect(screen, (148, 90, 45), paper, 3, border_radius=6)
         y = paper.top + 15
@@ -582,6 +693,14 @@ async def main():
     SAGE = (78, 104, 72)
     money_font = pygame.font.Font(FONT_PATH, 56)
     money_popup_text = ""
+    displayed_money = 0      # the number on screen, slides toward money
+    button_hover = {}        # hover animation for the custom buttons
+    key_font = pygame.font.Font(FONT_PATH, 26)
+    topping_drop_start = {}  # topping name -> time it was dropped in (for the bounce)
+    # SCREEN TRANSITIONS (Sophia): crossfade whenever the screen changes
+    last_screen = None
+    transition_snapshot = None
+    transition_timer = 0
     money_popup_timer = 0
     last_mood = "happy"
 
@@ -669,6 +788,17 @@ async def main():
                 elif (event.key == K_RETURN or event.key == K_SPACE) and status == "game" and dialogue_text != "" and dialogue_visible:
                     # DIALOGUE: Enter finishes the text / closes it
                     advance_dialogue()
+                elif event.key == K_1 and status == "mode_select":
+                    status = "title"
+                elif event.key == K_2 and status == "mode_select":
+                    start_camera()
+                    status = "title"
+                elif event.key == K_s and status == "game" and not dialogue_visible and customer is not None and not customer_reacting:
+                    # SERVE [S]
+                    serve_drink()
+                elif event.key == K_r and status == "game" and cup_shown and customer is not None and not customer_reacting:
+                    # CLEAR [R]
+                    clear_drink()
                 elif event.key == K_c and status == "game":
                     # EMPTY CUP (Sophia)
                     cup_shown = True
@@ -713,8 +843,12 @@ async def main():
                                 if zone.collidepoint(event.pos):
                                     add_topping(topping_name)
 
-        screen.fill((0, 0, 0))
-
+        # SCREEN TRANSITIONS: the screen still shows last frame here, so keep a copy to fade out
+        if (status, cutscene_index) != last_screen:
+            if last_screen is not None:
+                transition_snapshot = screen.copy()
+                transition_timer = 0
+            last_screen = (status, cutscene_index)
 
         screen.fill((0, 0, 0))
 
@@ -722,19 +856,21 @@ async def main():
             ok, frame = camera.read()
             if ok:
                 frame = cv2.flip(frame, 1)
-                if status == "game" and picking_toppings():
+                if status in ("game", "how_to_play"):
                     finger_count = count_all_fingers(frame)
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 camera_image = pygame.image.frombuffer(frame.tobytes(), (frame.shape[1], frame.shape[0]), "RGB")
-                screen.blit(camera_image, (0, 0))
 
         if status == "mode_select":
-            pygame.draw.rect(screen, (255, 255, 255), browser_button, 3)
-            pygame.draw.rect(screen, (255, 255, 255), download_button, 3)
-            browser_text = font.render("Browser version", True, (255, 255, 255))
-            download_text = font.render("Downloaded version", True, (255, 255, 255))
-            screen.blit(browser_text, browser_text.get_rect(center=browser_button.center))
-            screen.blit(download_text, download_text.get_rect(center=download_button.center))
+            screen.blit(main_screen, (0, 0))
+            dim = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            dim.fill((40, 25, 15, 120))
+            screen.blit(dim, (0, 0))
+            pick_text = money_font.render("How are you playing?", True, (255, 244, 220))
+            screen.blit(pick_text, pick_text.get_rect(center=(640, 220)))
+            mouse_pos = pygame.mouse.get_pos()
+            draw_ui_button("browser", browser_button, "Browser version", "[1]", (245, 228, 196), (110, 62, 30), mouse_pos)
+            draw_ui_button("download", download_button, "Downloaded version", "[2]", (245, 228, 196), (110, 62, 30), mouse_pos)
         elif status == "title":
             # TITLE SCREEN
             title_timer += dt
@@ -771,12 +907,27 @@ async def main():
             # TUTORIAL SPOT (Sophia): black screen for now, put the tutorial here later
             hint_text = font.render("click to start", True, (90, 90, 90))
             screen.blit(hint_text, hint_text.get_rect(center=(640, 680)))
+            if use_camera:
+                # HAND MODE TIPS (Sophia)
+                if camera_image is not None:
+                    draw_hand_preview(pygame.Rect(480, 40, 320, 240), False)
+                tips = pygame.Rect(0, 0, 640, 190)
+                tips.center = (640, 420)
+                pygame.draw.rect(screen, (255, 250, 238), tips, border_radius=16)
+                pygame.draw.rect(screen, (148, 90, 45), tips, 3, border_radius=16)
+                tip_lines = ["Before you start (hand mode):",
+                             "- make sure you're in good lighting",
+                             "- nothing blocking your hand",
+                             "- palm facing the camera, fingers up"]
+                y = tips.top + 22
+                for number, line in enumerate(tip_lines):
+                    colour = (148, 90, 45) if number == 0 else (60, 40, 25)
+                    line_surface = font.render(line, True, colour)
+                    screen.blit(line_surface, line_surface.get_rect(midtop=(tips.centerx, y)))
+                    y += 40
         elif status == "game":
             # MAIN SCREEN BACKGROUND
             screen.blit(main_screen, (0, 0))
-            if use_camera and camera_image is not None:
-                # small webcam preview so players can still see their hands
-                screen.blit(pygame.transform.scale(camera_image, (320, 240)), (SCREEN_WIDTH - 330, 10))
 
             # CUSTOMER TIMER: next customer comes after the wait, served customers leave after 2 sec
             if customer is None and not customer_reacting:
@@ -832,16 +983,9 @@ async def main():
             for letter, pos in KEY_HINTS.items():
                 draw_key_hint(letter, pos)
 
-            # SERVE BUTTON
-            pygame.draw.rect(screen, (148, 90, 45), serve_button, 3)
-            serve_text = font.render("SERVE", True, (148, 90, 45))
-            screen.blit(serve_text, serve_text.get_rect(center=serve_button.center))
-
-            # CLEAR BUTTON
-            pygame.draw.rect(screen, (180, 90, 90), clear_button, border_radius=10)
-            pygame.draw.rect(screen, (255, 255, 255), clear_button, 2, border_radius=10)
-            clear_text = font.render("CLEAR", True, (255, 255, 255))
-            screen.blit(clear_text, clear_text.get_rect(center=clear_button.center))
+            # SERVE + CLEAR BUTTONS
+            draw_ui_button("serve", serve_button, "SERVE", "[S]", (122, 150, 112), (255, 248, 235), mouse_pos)
+            draw_ui_button("clear", clear_button, "CLEAR", "[R]", (214, 128, 112), (255, 248, 235), mouse_pos)
 
             if use_camera:
                 # OPENCV MODE (Sophia): toppings can also be picked with fingers
@@ -851,6 +995,9 @@ async def main():
                         hold_frames = 0
                     elif waiting_for_reset:
                         pass
+                    elif finger_count > len(HAND_TOPPINGS) or HAND_TOPPINGS[finger_count - 1] not in available_toppings:
+                        hold_frames = 0      # 9-10 fingers, or a locked topping: nothing to pick
+                        held_count = finger_count
                     elif finger_count == held_count:
                         hold_frames += 1
                         if hold_frames >= HOLD_TIME and finger_count <= len(HAND_TOPPINGS):
@@ -861,15 +1008,10 @@ async def main():
                         held_count = finger_count
                         hold_frames = 0
 
-                    fingers_text = font.render("Fingers: " + str(finger_count), True, (255, 255, 255))
-                    screen.blit(fingers_text, (20, 110))
-                    pygame.draw.rect(screen, (255, 255, 255), (20, 150, 300, 25), 2)
-                    pygame.draw.rect(screen, (255, 255, 255), (20, 150, int(300 * hold_frames / HOLD_TIME), 25))
 
-                # TOPPINGS DONE
-                elif customer is not None and not customer_reacting:
-                    done_text = font.render("Toppings done! Click SERVE", True, (255, 255, 255))
-                    screen.blit(done_text, (20, 110))
+            # HAND PREVIEW (Sophia): webcam with your tracked hands, the count, and the hold bar
+            if use_camera and camera_image is not None:
+                draw_hand_preview()
 
             # CUSTOMER DIALOGUE (Sophia)
             # new customer walks up: show their order line
@@ -909,6 +1051,9 @@ async def main():
 
             # MONEY (Sophia)
             money_popup_timer += dt
+            displayed_money += (money - displayed_money) * 0.08
+            if abs(money - displayed_money) < 0.5:
+                displayed_money = money
             draw_money()
         
         elif status == "end":
@@ -930,6 +1075,16 @@ async def main():
             screen.blit(win_text, win_text.get_rect(center=(640, 330)))
             screen.blit(money_text, money_text.get_rect(center=(640, 420)))
             screen.blit(exit_text, exit_text.get_rect(center=(640, 550)))
+
+        # SCREEN TRANSITIONS: old screen fades out over the new one
+        if transition_snapshot is not None:
+            transition_timer += dt
+            fade = 1 - transition_timer / 450
+            if fade <= 0:
+                transition_snapshot = None
+            else:
+                transition_snapshot.set_alpha(int(255 * fade))
+                screen.blit(transition_snapshot, (0, 0))
 
         pygame.display.flip()
         clock.tick(60)
