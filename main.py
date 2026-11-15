@@ -46,6 +46,9 @@ async def main():
         #"mangochunk":{"image": pygame.image.load("assets/toppings/mango.png"), "value": 20},
         #"redbean":{"image": pygame.image.load("assets/toppings/redbean.png"), "value": 20}
     }
+    BASES = {
+        """add stuff here"""
+    }
 
     print("CV_ON:", CV_ON)
 
@@ -218,6 +221,7 @@ async def main():
         nonlocal customer, current_order
 
         name = random.choice(list(CUSTOMERS.keys()))
+        current_base = random.choice(list(BASES.keys()))
         current_order = generate_order()
         customer = Customer(name, current_order)
 
@@ -225,9 +229,14 @@ async def main():
         toppings.empty()
 
         positions = [
+            (150, 450),
             (300, 450),
-            (500, 450),
-            (700, 450)
+            (450, 450),
+            (600, 450),
+            (750, 450),
+            (900, 450),
+            (1050, 450),
+            (1200, 450)
         ]
 
         for index, topping_name in enumerate(available_toppings):
@@ -239,6 +248,13 @@ async def main():
                 topping_name,
                 TOPPINGS[topping_name]["value"]
             ))
+
+    def unlock_next_topping():
+        nonlocal unlocked_toppings
+        if unlocked_toppings < len(TOPPINGS):
+            unlocked_toppings += 1
+            available_toppings.append(TOPPINGS[unlocked_toppings - 1])
+            print("New topping unlocked:", TOPPINGS[unlocked_toppings - 1])
 
     class Customer:
             def __init__(self, name, order):
@@ -291,7 +307,8 @@ async def main():
 
     toppings = pygame.sprite.Group()
 
-    available_toppings = []   # empty while TOPPINGS is commented out. Later: e.g. ["pearls", "grassjelly", "coconut"] (max 3)
+    available_toppings = list(TOPPINGS.keys())[:3]
+    unlocked_toppings = 3
     selected_toppings = []
     current_order = []
     customer = None
@@ -440,10 +457,12 @@ async def main():
                                 reaction_timer = 0
 
                                 if accepted:
+                                    money += BASES[current_base]["value"]
                                     money += sum(
                                         TOPPINGS[name]["value"]
                                         for name in current_order
-                                    )
+                                        )
+                                    unlock_next_topping()
 
                     # OPENCV MODE (Sophia): serve is still done with the mouse
                     if use_camera and customer is not None and not customer_reacting:
@@ -454,10 +473,12 @@ async def main():
                             reaction_timer = 0
 
                             if accepted:
+                                money += BASES[current_base]["value"]
                                 money += sum(
                                     TOPPINGS[name]["value"]
                                     for name in current_order
-                                )
+                                    )
+                                unlock_next_topping()
 
                     # BASES (Sophia): click a jar to fill the cup (cup has to be out first, press C)
                     if cup_shown:
@@ -681,10 +702,16 @@ async def main():
             if customer is not None and customer is not dialogue_customer:
                 dialogue_customer = customer
                 current_base = random.choice(list(BASES.keys()))
+
                 reaction_given = False
                 dialogue_text = ""
+
                 if customer.name in CUSTOMER_DIALOGUE:
-                    dialogue_text = fill_in_dialogue(random.choice(CUSTOMER_DIALOGUE[customer.name]["order"]))
+                    dialogue_text = fill_in_dialogue(
+                        random.choice(
+                            CUSTOMER_DIALOGUE[customer.name]["order"]
+                        )
+                    )
 
             # drink was served: switch to a reaction line
             if customer is not None and customer_reacting and not reaction_given:
