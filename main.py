@@ -485,7 +485,7 @@ async def main():
         label.set_alpha(alpha)
         screen.blit(label, label.get_rect(center=(rect.centerx - 4, rect.centery - 4)))
 
-    # STORY FLOW (Sophia): cutscene frames -> tutorial (placeholder) -> game
+    # STORY FLOW cutscene frames -> tutorial -> game
     def next_story_screen():
         nonlocal status, cutscene_index
         if status == "tutorial":
@@ -628,7 +628,7 @@ async def main():
     customer_reacting = False
     reaction_timer = 0
 
-    cutscene = [pygame.image.load("assets/ui/cutscene_frame1.png"), pygame.image.load("assets/ui/cutscene_frame2.png")]
+    cutscene = [pygame.image.load("assets/ui/cutscene_frame1.png"), pygame.image.load("assets/ui/cutscene_frame2.png"), pygame.image.load("assets/ui/cutscene_frame3.png")]
     cutscene_index = 0
 
     # MAIN SCREEN BACKGROUND (Sophia)
