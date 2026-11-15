@@ -48,7 +48,15 @@ async def main():
     HAND_TOPPINGS = ["pearls", "grass jelly", "coconut jelly", "strawberry popping boba",
                      "mango popping boba", "mango chunks", "strawberry chunks", "red bean"]
 
-    font = pygame.font.Font(None, 40)
+    # DEFAULT FONT (Sophia): falls back to pygame's font if the file is missing
+    FONT_PATH = "assets/VT323-Regular.ttf"
+    try:
+        pygame.font.Font(FONT_PATH, 45)
+    except (FileNotFoundError, OSError):
+        print("Font not found:", FONT_PATH)
+        FONT_PATH = None
+
+    font = pygame.font.Font(FONT_PATH, 40)
     browser_button = pygame.Rect(240, 300, 360, 120) # kinda chopped rn so we can make it look better when we have artists UI done/titlepage
     download_button = pygame.Rect(680, 300, 360, 120)
     mode_message = ""
@@ -134,6 +142,30 @@ async def main():
         if current_line:
             lines.append(current_line)
         return lines
+
+    # TITLE SCREEN (Sophia)
+    def scale_to_width(image, width):
+        height = int(image.get_height() * width / image.get_width())
+        return pygame.transform.smoothscale(image, (width, height))
+
+    def ease_out_back(t):
+        # goes from 0 to 1, overshoots a little at the end, then settles (a small bounce)
+        t = max(0, min(1, t))
+        return 1 + 2.7 * (t - 1) ** 3 + 1.7 * (t - 1) ** 2
+
+    def draw_button(text, center, lift, appear):
+        # lift: 0 to 1 (hover), appear: 0 to 1 (load-in)
+        size = 1 + 0.04 * lift
+        image = pygame.transform.smoothscale(button_image, (int(button_image.get_width() * size), int(button_image.get_height() * size)))
+        x = center[0] + int((1 - appear) * 300)      # slides in from the right
+        y = center[1] - int(8 * lift)                # lifts up when hovered
+        rect = image.get_rect(center=(x, y))
+        alpha = int(255 * max(0, min(1, appear)))
+        image.set_alpha(alpha)
+        screen.blit(image, rect)
+        label = button_font.render(text, True, (59, 38, 24))
+        label.set_alpha(alpha)
+        screen.blit(label, label.get_rect(center=(rect.centerx - 4, rect.centery - 4)))
 
     def generate_order():
         number = random.randint(1, len(available_toppings))
@@ -228,6 +260,20 @@ async def main():
     # MAIN SCREEN BACKGROUND (Sophia)
     main_screen = pygame.transform.scale(pygame.image.load("assets/ui/background.png").convert(), (SCREEN_WIDTH, SCREEN_HEIGHT))
     camera_image = None
+
+    # TITLE SCREEN (Sophia)
+    title_image = scale_to_width(pygame.image.load("assets/ui/title.png").convert_alpha(), 735)
+    button_image = scale_to_width(pygame.image.load("assets/ui/button.png").convert_alpha(), 350)
+    dialogue_image = pygame.image.load("assets/ui/dialogue.png").convert_alpha()
+    button_font = pygame.font.Font(FONT_PATH, 44)
+    TITLE_CENTER = (410, 215)
+    START_CENTER = (995, 185)
+    QUIT_CENTER = (995, 340)
+    start_rect = button_image.get_rect(center=START_CENTER)
+    quit_rect = button_image.get_rect(center=QUIT_CENTER)
+    title_timer = 0      # how long the title screen has been showing (ms)
+    start_lift = 0       # hover animation, 0 = resting, 1 = fully lifted
+    quit_lift = 0
     
     tutorial_text = []
 
@@ -239,7 +285,7 @@ async def main():
             "order": ["A {base} with {toppings}... the perfect reward after a long day of napping."],
             "happy": ["*happy dance* ...This {base} is perfect. Best nap snack ever."],
             "meh": ["*tilts head* ...Not bad. Not great. Like a nap that was too short."],
-            "angry": ["*flops over* ...This is NOT what I ordered. Ugh."],
+            "angry": ["*flops over* ...ok."],
         },
         "hamster": {
             "order": ["HI CHAT CAN I GET A {base} WITH SOME {topping} PLSPSLPSSPLS!!!!"],
@@ -248,10 +294,10 @@ async def main():
             "angry": ["Bro. Are u fr. I'm allergic to {base}"],
         },
         "redpanda": {
-            "order": ["Grr uwu"],
-            "happy": ["Grr~ uwu! It's perfect, thank youuu!"],
-            "meh": ["Grr... it's okay I guess... uwu"],
-            "angry": ["GRRR! This is NOT what I asked for! >:("],
+            "order": ["I'm hungry. Can I have a 67 ({base}) with some skibidi rizz ({topping})"],
+            "happy": ["Waiitttt imma touch u! It's perfect, thank youuu!"],
+            "meh": ["Grr... it's okay I guess..."],
+            "angry": ["GRRRRR this isnt what i asked for bro >:("],
         },
         "chiikawa": {
             "order": ["Hmph! I-it's not like I wanted a {base} with {toppings} or anything! And I definitely didn't come here just to see you... b-baka!"],
@@ -266,7 +312,7 @@ async def main():
             "angry": ["cro... wrong order fam."],
         },
     }
-    dialogue_font = pygame.font.Font(None, 30)
+    dialogue_font = pygame.font.Font(FONT_PATH, 30)
     dialogue_box = pygame.Rect(340, 320, 600, 110)
     dialogue_customer = None     # the customer the current dialogue belongs to
     dialogue_text = ""
@@ -301,6 +347,13 @@ async def main():
                     elif download_button.collidepoint(event.pos):
                         start_camera()
                         status = "title"
+                elif status == "title":
+                    # TITLE SCREEN (Sophia)
+                    if title_timer > 1400:
+                        if start_rect.collidepoint(event.pos):
+                            status = "tutorial"
+                        elif quit_rect.collidepoint(event.pos):
+                            running = False
                 elif status == "game":
                     if not use_camera and customer is not None and not customer_reacting:
                             clicked = False
@@ -359,6 +412,31 @@ async def main():
             screen.blit(browser_text, browser_text.get_rect(center=browser_button.center))
             screen.blit(download_text, download_text.get_rect(center=download_button.center))
         elif status == "title":
+            # TITLE SCREEN (Sophia)
+            title_timer += dt
+
+            # background fades in from black
+            main_screen.set_alpha(min(255, int(255 * title_timer / 600)))
+            screen.blit(main_screen, (0, 0))
+            main_screen.set_alpha(255)
+
+            # title drops in from above with a small bounce
+            t = (title_timer - 400) / 700
+            appear = ease_out_back(t)
+            title_image.set_alpha(int(255 * max(0, min(1, t))))
+            screen.blit(title_image, title_image.get_rect(center=(TITLE_CENTER[0], TITLE_CENTER[1] - int((1 - appear) * 120))))
+
+            # hover: smoothly move toward lifted (1) or resting (0)
+            mouse_pos = pygame.mouse.get_pos()
+            start_target = 1 if start_rect.collidepoint(mouse_pos) else 0
+            quit_target = 1 if quit_rect.collidepoint(mouse_pos) else 0
+            start_lift += (start_target - start_lift) * 0.18
+            quit_lift += (quit_target - quit_lift) * 0.18
+
+            # buttons slide in from the right, one after the other
+            draw_button("start", START_CENTER, start_lift, ease_out_back((title_timer - 800) / 600))
+            draw_button("quit", QUIT_CENTER, quit_lift, ease_out_back((title_timer - 950) / 600))
+
             if mode_message != "":
                 message_text = font.render(mode_message, True, (255, 255, 255))
                 screen.blit(message_text, message_text.get_rect(center=(640, 650)))
@@ -519,8 +597,7 @@ async def main():
 
             # DRAW DIALOGUE
             if dialogue_text != "":
-                pygame.draw.rect(screen, (148, 90, 45), dialogue_box)
-                pygame.draw.rect(screen, (80, 80, 80), dialogue_box, 3)
+                screen.blit(pygame.transform.smoothscale(dialogue_image, dialogue_box.size), dialogue_box)
                 y = dialogue_box.top + 15
                 for line in wrap_text(dialogue_text, dialogue_font, dialogue_box.width - 30):
                     line_surface = dialogue_font.render(line, True, (0, 0, 0))
