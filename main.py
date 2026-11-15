@@ -21,7 +21,7 @@ async def main():
     pygame.display.set_caption("Boba Comeback")
     clock = pygame.time.Clock()
     CUSTOMERS = {
-        "hamster":{"default":pygame.image.load("assets/characters/hamster_default.png"), "angry":pygame.image.load("assets/characters/hamster_disgusted.png"), "happy":pygame.image.load("assets/characters/hamster_happy.png")},
+        "hamster":{"default":pygame.image.load("assets/characters/hamster_default.png"), "angry":pygame.image.load("assets/characters/hamster_angry.png"), "happy":pygame.image.load("assets/characters/hamster_happy.png")},
         "chiikawa":{"default":pygame.image.load("assets/characters/chiikawa_default.png"), "angry":pygame.image.load("assets/characters/chiikawa_angry.png"), "happy":pygame.image.load("assets/characters/chiikawa_happy.png")},
         "peppapig":{"default":pygame.image.load("assets/characters/peppapig_default.png"), "angry":pygame.image.load("assets/characters/peppapig_angry.png"), "happy":pygame.image.load("assets/characters/peppapig_happy.png")},
         "redpanda":{"default":pygame.image.load("assets/characters/redpanda_default.png"), "angry":pygame.image.load("assets/characters/redpanda_angry.png"), "happy":pygame.image.load("assets/characters/redpanda_happy.png")},
@@ -211,7 +211,7 @@ async def main():
 
     toppings = pygame.sprite.Group()
 
-    available_toppings = ['''add stuff here''']
+    available_toppings = ['''add three here''']
     selected_toppings = []
     current_order = []
     customer = None
@@ -243,7 +243,7 @@ async def main():
             "meh": ["Hmm, I think you made it wrong... that's okay ig."],
             "angry": ["Bro. Are u fr. I'm allergic to {base}"],
         },
-        "red panda": {
+        "redpanda": {
             "order": ["Grr uwu"],
             "happy": ["Grr~ uwu! It's perfect, thank youuu!"],
             "meh": ["Grr... it's okay I guess... uwu"],
@@ -255,7 +255,7 @@ async def main():
             "meh": ["Th-this is kind of close... b-but don't think I'm impressed or anything! Hmph."],
             "angry": ["b-baka! What the hell's wrong with you! Can't even make a simple drink..!"],
         },
-        "peppa pig": {
+        "peppapig": {
             "order": ["Two Two's my Poo Poo's, I finna take a {base} w some {topping}, don't be a Gerbert fam."],
             "happy": ["Yooo this is fire! Bless up bossman!"],
             "meh": ["Nah who made this. I'm sooper cheesed fam."],
@@ -379,6 +379,8 @@ async def main():
                     if reaction_timer >= 2000:
                         customer = None
                         customer_reacting = False
+                        reaction_timer = 0
+                        #new customer wait time
                         customer_timer = 0
                         next_customer_time = random.randint(3000, 7000)
 
@@ -445,10 +447,12 @@ async def main():
                 # CUSTOMER REACTION
                 if customer_reacting:
                     reaction_timer += dt
-
+                
                     if reaction_timer >= 2000:
                         customer = None
                         customer_reacting = False
+                        reaction_timer = 0
+                        #new customer wait time
                         customer_timer = 0
                         next_customer_time = random.randint(3000, 7000)
 
